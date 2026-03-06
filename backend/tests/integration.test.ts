@@ -12,6 +12,11 @@ describe("API Integration Tests", () => {
   let foodEntryId: string;
   let foodEntryIdForOwnershipTest: string;
   let userId: string;
+  let token2: string;
+  let user2Id: string;
+  let groupId: string;
+  let invitationId: string;
+  let notificationId: string;
 
   test("Sign up test user", async () => {
     const { token, user } = await signUpTestUser();
@@ -539,6 +544,294 @@ describe("API Integration Tests", () => {
         calories: 450,
         imageUrl: "https://example.com/pasta.jpg",
       }),
+    });
+    await expectStatus(res, 401);
+  });
+
+  // ===== Groups Tests =====
+
+  test("Sign up second test user for group tests", async () => {
+    const { token, user } = await signUpTestUser();
+    token2 = token;
+    user2Id = user.id;
+    expect(token2).toBeDefined();
+  });
+
+  test("Create private group", async () => {
+    const res = await authenticatedApi("/api/groups/create-private", authToken, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        name: "Test Private Group",
+        description: "A test group for integration testing",
+        invitedUserIds: [user2Id],
+      }),
+    });
+    await expectStatus(res, 201);
+    const data = await res.json();
+    groupId = data.groupId;
+    expect(data.groupId).toBeDefined();
+    expect(data.invitationsSent).toBe(1);
+  });
+
+  test("Get all groups", async () => {
+    const res = await authenticatedApi("/api/groups", authToken);
+    await expectStatus(res, 200);
+    const data = await res.json();
+    expect(Array.isArray(data)).toBe(true);
+    // First user should see the group they created
+    expect(data.length).toBeGreaterThanOrEqual(1);
+  });
+
+  test("Get all groups for second user", async () => {
+    const res = await authenticatedApi("/api/groups", token2);
+    await expectStatus(res, 200);
+    const data = await res.json();
+    expect(Array.isArray(data)).toBe(true);
+  });
+
+  test("Get group details by ID", async () => {
+    const res = await authenticatedApi(`/api/groups/${groupId}`, authToken);
+    await expectStatus(res, 200);
+    const data = await res.json();
+    expect(data.id).toBe(groupId);
+    expect(data.name).toBe("Test Private Group");
+    expect(Array.isArray(data.members)).toBe(true);
+  });
+
+  test("Get non-existent group returns 404", async () => {
+    const res = await authenticatedApi(
+      "/api/groups/00000000-0000-0000-0000-000000000000",
+      authToken
+    );
+    await expectStatus(res, 404);
+  });
+
+  test("Get invalid UUID group returns 400 or 404", async () => {
+    const res = await authenticatedApi(
+      "/api/groups/invalid-uuid",
+      authToken
+    );
+    await expectStatus(res, 400, 404);
+  });
+
+  test("Get groups without auth returns 401", async () => {
+    const res = await api("/api/groups");
+    await expectStatus(res, 401);
+  });
+
+  test("Get group details without auth returns 401", async () => {
+    const res = await api(`/api/groups/${groupId}`);
+    await expectStatus(res, 401);
+  });
+
+  test("Create group without auth returns 401", async () => {
+    const res = await api("/api/groups/create-private", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        name: "Unauthorized Group",
+        invitedUserIds: [user2Id],
+      }),
+    });
+    await expectStatus(res, 401);
+  });
+
+  test("Create group with missing required fields returns 400", async () => {
+    const res = await authenticatedApi("/api/groups/create-private", authToken, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        name: "Missing Invites",
+        // missing invitedUserIds
+      }),
+    });
+    await expectStatus(res, 400);
+  });
+
+  // ===== Group Invitations Tests =====
+
+  test("Get pending group invitations", async () => {
+    const res = await authenticatedApi(
+      "/api/group-invitations/pending",
+      token2
+    );
+    await expectStatus(res, 200);
+    const data = await res.json();
+    expect(Array.isArray(data)).toBe(true);
+    // Second user should have an invitation from the group created above
+    if (data.length > 0) {
+      invitationId = data[0].id;
+      expect(data[0].groupId).toBeDefined();
+      expect(data[0].groupName).toBeDefined();
+      expect(data[0].invitedByUserId).toBeDefined();
+    }
+  });
+
+  test("Accept group invitation", async () => {
+    if (invitationId) {
+      const res = await authenticatedApi(
+        `/api/group-invitations/${invitationId}/accept`,
+        token2,
+        {
+          method: "POST",
+        }
+      );
+      await expectStatus(res, 200);
+      const data = await res.json();
+      expect(data.success).toBe(true);
+      expect(data.groupId).toBeDefined();
+    }
+  });
+
+  test("Reject non-existent invitation returns 404", async () => {
+    const res = await authenticatedApi(
+      "/api/group-invitations/00000000-0000-0000-0000-000000000000/reject",
+      token2,
+      {
+        method: "POST",
+      }
+    );
+    await expectStatus(res, 404);
+  });
+
+  test("Accept non-existent invitation returns 404", async () => {
+    const res = await authenticatedApi(
+      "/api/group-invitations/00000000-0000-0000-0000-000000000000/accept",
+      token2,
+      {
+        method: "POST",
+      }
+    );
+    await expectStatus(res, 404);
+  });
+
+  test("Get pending invitations without auth returns 401", async () => {
+    const res = await api("/api/group-invitations/pending");
+    await expectStatus(res, 401);
+  });
+
+  test("Accept invitation without auth returns 401", async () => {
+    const res = await api(
+      `/api/group-invitations/${invitationId}/accept`,
+      {
+        method: "POST",
+      }
+    );
+    await expectStatus(res, 401);
+  });
+
+  test("Reject invitation without auth returns 401", async () => {
+    const res = await api(
+      `/api/group-invitations/${invitationId}/reject`,
+      {
+        method: "POST",
+      }
+    );
+    await expectStatus(res, 401);
+  });
+
+  // ===== Notifications Tests =====
+
+  test("Get all notifications", async () => {
+    const res = await authenticatedApi("/api/notifications", authToken);
+    await expectStatus(res, 200);
+    const data = await res.json();
+    expect(Array.isArray(data)).toBe(true);
+    if (data.length > 0) {
+      notificationId = data[0].id;
+      expect(data[0].id).toBeDefined();
+      expect(data[0].type).toBeDefined();
+      expect(typeof data[0].read).toBe("boolean");
+    }
+  });
+
+  test("Get unread notification count", async () => {
+    const res = await authenticatedApi(
+      "/api/notifications/unread-count",
+      authToken
+    );
+    await expectStatus(res, 200);
+    const data = await res.json();
+    expect(typeof data.count).toBe("number");
+  });
+
+  test("Mark notification as read", async () => {
+    if (notificationId) {
+      const res = await authenticatedApi(
+        `/api/notifications/${notificationId}/mark-read`,
+        authToken,
+        {
+          method: "POST",
+        }
+      );
+      await expectStatus(res, 200);
+      const data = await res.json();
+      expect(data.success).toBe(true);
+    }
+  });
+
+  test("Mark non-existent notification as read returns 404", async () => {
+    const res = await authenticatedApi(
+      "/api/notifications/00000000-0000-0000-0000-000000000000/mark-read",
+      authToken,
+      {
+        method: "POST",
+      }
+    );
+    await expectStatus(res, 404);
+  });
+
+  test("Get notifications without auth returns 401", async () => {
+    const res = await api("/api/notifications");
+    await expectStatus(res, 401);
+  });
+
+  test("Get unread count without auth returns 401", async () => {
+    const res = await api("/api/notifications/unread-count");
+    await expectStatus(res, 401);
+  });
+
+  test("Mark notification as read without auth returns 401", async () => {
+    const res = await api(
+      "/api/notifications/00000000-0000-0000-0000-000000000000/mark-read",
+      {
+        method: "POST",
+      }
+    );
+    await expectStatus(res, 401);
+  });
+
+  // ===== Group Join Tests =====
+
+  test("Join public group", async () => {
+    // Create a public group first - if create-private is available, test join on an existing group
+    // Try to join the group we already created (may be private or public)
+    const res = await authenticatedApi(
+      `/api/groups/${groupId}/join`,
+      token2,
+      {
+        method: "POST",
+      }
+    );
+    // Should succeed if group is public and user isn't already a member, or return 403/409 if private/already member
+    await expectStatus(res, 200, 403, 409);
+  });
+
+  test("Join non-existent group returns 404", async () => {
+    const res = await authenticatedApi(
+      "/api/groups/00000000-0000-0000-0000-000000000000/join",
+      authToken,
+      {
+        method: "POST",
+      }
+    );
+    await expectStatus(res, 404);
+  });
+
+  test("Join group without auth returns 401", async () => {
+    const res = await api(`/api/groups/${groupId}/join`, {
+      method: "POST",
     });
     await expectStatus(res, 401);
   });

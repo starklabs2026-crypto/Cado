@@ -4,6 +4,9 @@ import * as authSchema from './db/schema/auth-schema.js';
 import { registerFoodEntryRoutes } from './routes/food-entries.js';
 import { registerUserProfileRoutes } from './routes/user-profile.js';
 import { registerUsageRoutes } from './routes/usage.js';
+import { registerGroupRoutes } from './routes/groups.js';
+import { registerInvitationRoutes } from './routes/invitations.js';
+import { registerNotificationRoutes } from './routes/notifications.js';
 
 const schema = { ...appSchema, ...authSchema };
 
@@ -23,6 +26,9 @@ app.withStorage();
 registerFoodEntryRoutes(app);
 registerUserProfileRoutes(app);
 registerUsageRoutes(app);
+registerGroupRoutes(app);
+registerInvitationRoutes(app);
+registerNotificationRoutes(app);
 
 await app.run();
 app.logger.info('Application running');
