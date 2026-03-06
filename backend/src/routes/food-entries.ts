@@ -933,5 +933,197 @@ Return JSON only: { foodName, calories, protein, carbs, fat, confidence }.`,
       return { success: true };
     }
   );
+
+  // GET /api/food-entries/progress - Get weekly progress data with BMI statistics
+  app.fastify.get('/api/food-entries/progress', {
+    schema: {
+      description: 'Get weekly progress data and BMI statistics for the authenticated user',
+      tags: ['food-entries'],
+      response: {
+        200: {
+          type: 'object',
+          properties: {
+            thisWeek: {
+              type: 'object',
+              properties: {
+                totalCalories: { type: 'number' },
+                totalProtein: { type: 'number' },
+                totalCarbs: { type: 'number' },
+                totalFat: { type: 'number' },
+                dailyCalories: { type: 'array', items: { type: 'number' } },
+                days: { type: 'array', items: { type: 'string' } },
+              },
+            },
+            lastWeek: {
+              type: 'object',
+              properties: {
+                totalCalories: { type: 'number' },
+                totalProtein: { type: 'number' },
+                totalCarbs: { type: 'number' },
+                totalFat: { type: 'number' },
+                dailyCalories: { type: 'array', items: { type: 'number' } },
+                days: { type: 'array', items: { type: 'string' } },
+              },
+            },
+            twoWeeksAgo: {
+              type: 'object',
+              properties: {
+                totalCalories: { type: 'number' },
+                totalProtein: { type: 'number' },
+                totalCarbs: { type: 'number' },
+                totalFat: { type: 'number' },
+                dailyCalories: { type: 'array', items: { type: 'number' } },
+                days: { type: 'array', items: { type: 'string' } },
+              },
+            },
+            threeWeeksAgo: {
+              type: 'object',
+              properties: {
+                totalCalories: { type: 'number' },
+                totalProtein: { type: 'number' },
+                totalCarbs: { type: 'number' },
+                totalFat: { type: 'number' },
+                dailyCalories: { type: 'array', items: { type: 'number' } },
+                days: { type: 'array', items: { type: 'string' } },
+              },
+            },
+            bmi: { type: ['number', 'null'] },
+            bmiStatus: { type: ['string', 'null'] },
+            currentWeight: { type: ['number', 'null'] },
+            goalWeight: { type: ['number', 'null'] },
+          },
+        },
+        401: {
+          type: 'object',
+          properties: { error: { type: 'string' } },
+        },
+      },
+    },
+  }, async (request: FastifyRequest, reply: FastifyReply) => {
+    const session = await requireAuth(request, reply);
+    if (!session) return;
+
+    app.logger.info({ userId: session.user.id }, 'Fetching weekly progress data');
+
+    // Helper function to calculate stats for a week (weekOffset: 0 = this week, 1 = last week, etc.)
+    const getWeekStats = async (weekOffset: number) => {
+      // Calculate start of current week (Sunday)
+      const today = new Date();
+      const dayOfWeek = today.getDay();
+      const startOfThisWeek = new Date(today);
+      startOfThisWeek.setDate(today.getDate() - dayOfWeek);
+      startOfThisWeek.setHours(0, 0, 0, 0);
+
+      // Calculate start and end of the target week
+      const startOfWeek = new Date(startOfThisWeek);
+      startOfWeek.setDate(startOfThisWeek.getDate() - (weekOffset * 7));
+
+      const endOfWeek = new Date(startOfWeek);
+      endOfWeek.setDate(startOfWeek.getDate() + 7);
+
+      // Get entries for the week
+      const entries = await app.db
+        .select()
+        .from(schema.foodEntries)
+        .where(
+          and(
+            eq(schema.foodEntries.userId, session.user.id),
+            gte(schema.foodEntries.createdAt, startOfWeek),
+            lt(schema.foodEntries.createdAt, endOfWeek)
+          )
+        );
+
+      // Initialize daily stats (0 = Sunday, 6 = Saturday)
+      const dailyStats: Record<number, { calories: number; protein: number; carbs: number; fat: number }> = {};
+      for (let i = 0; i < 7; i++) {
+        dailyStats[i] = { calories: 0, protein: 0, carbs: 0, fat: 0 };
+      }
+
+      // Aggregate entries by day of week
+      entries.forEach((entry) => {
+        const entryDate = new Date(entry.createdAt);
+        const dayIndex = entryDate.getDay();
+        dailyStats[dayIndex].calories += entry.calories;
+        dailyStats[dayIndex].protein += entry.protein || 0;
+        dailyStats[dayIndex].carbs += entry.carbs || 0;
+        dailyStats[dayIndex].fat += entry.fat || 0;
+      });
+
+      // Calculate totals
+      const totalCalories = Object.values(dailyStats).reduce((sum, day) => sum + day.calories, 0);
+      const totalProtein = Object.values(dailyStats).reduce((sum, day) => sum + day.protein, 0);
+      const totalCarbs = Object.values(dailyStats).reduce((sum, day) => sum + day.carbs, 0);
+      const totalFat = Object.values(dailyStats).reduce((sum, day) => sum + day.fat, 0);
+
+      // Build daily calories array (0=Sun, 1=Mon, ..., 6=Sat)
+      const dayLabels = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+      const dailyCalories = dayLabels.map((_, i) => dailyStats[i].calories);
+
+      return {
+        totalCalories,
+        totalProtein,
+        totalCarbs,
+        totalFat,
+        dailyCalories,
+        days: dayLabels,
+      };
+    };
+
+    // Get stats for all 4 weeks in parallel
+    const [thisWeek, lastWeek, twoWeeksAgo, threeWeeksAgo] = await Promise.all([
+      getWeekStats(0),
+      getWeekStats(1),
+      getWeekStats(2),
+      getWeekStats(3),
+    ]);
+
+    // Get user profile for BMI calculation
+    const profile = await app.db
+      .select()
+      .from(schema.userProfiles)
+      .where(eq(schema.userProfiles.userId, session.user.id))
+      .limit(1);
+
+    let bmi: number | null = null;
+    let bmiStatus: string | null = null;
+    let currentWeight: number | null = null;
+    let goalWeight: number | null = null;
+
+    if (profile.length > 0 && profile[0].heightCm && profile[0].weightKg) {
+      const heightMeters = profile[0].heightCm / 100;
+      bmi = Math.round((profile[0].weightKg / (heightMeters * heightMeters)) * 10) / 10;
+      currentWeight = profile[0].weightKg;
+
+      // Determine BMI status
+      if (bmi < 18.5) {
+        bmiStatus = 'Underweight';
+      } else if (bmi < 25) {
+        bmiStatus = 'Healthy';
+      } else if (bmi < 30) {
+        bmiStatus = 'Overweight';
+      } else {
+        bmiStatus = 'Obese';
+      }
+
+      // goalWeight is not stored in the schema, return null
+      goalWeight = null;
+    }
+
+    app.logger.info(
+      { userId: session.user.id, bmi, bmiStatus },
+      'Weekly progress data retrieved'
+    );
+
+    return {
+      thisWeek,
+      lastWeek,
+      twoWeeksAgo,
+      threeWeeksAgo,
+      bmi,
+      bmiStatus,
+      currentWeight,
+      goalWeight,
+    };
+  });
 }
 

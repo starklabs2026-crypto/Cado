@@ -305,6 +305,29 @@ describe("API Integration Tests", () => {
     await expectStatus(res, 401);
   });
 
+  // ===== Progress Tests =====
+
+  test("Get food entries progress", async () => {
+    const res = await authenticatedApi(
+      "/api/food-entries/progress",
+      authToken
+    );
+    await expectStatus(res, 200);
+    const data = await res.json();
+    expect(data.thisWeek).toBeDefined();
+    expect(typeof data.thisWeek.totalCalories).toBe("number");
+    expect(Array.isArray(data.thisWeek.dailyCalories)).toBe(true);
+    expect(Array.isArray(data.thisWeek.days)).toBe(true);
+    expect(data.lastWeek).toBeDefined();
+    expect(data.twoWeeksAgo).toBeDefined();
+    expect(data.threeWeeksAgo).toBeDefined();
+  });
+
+  test("Get food entries progress without auth returns 401", async () => {
+    const res = await api("/api/food-entries/progress");
+    await expectStatus(res, 401);
+  });
+
   // ===== Food Entry Update/Delete Tests =====
 
   test("Update food entry", async () => {
