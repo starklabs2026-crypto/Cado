@@ -47,6 +47,7 @@ export const groups = pgTable('groups', {
   description: text('description'),
   createdByUserId: text('created_by_user_id').notNull().references(() => user.id, { onDelete: 'cascade' }),
   isPrivate: boolean('is_private').default(true).notNull(),
+  inviteToken: text('invite_token').unique(),
   createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
   updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
 });

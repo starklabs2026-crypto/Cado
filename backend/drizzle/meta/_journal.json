@@ -43,6 +43,13 @@
       "when": 1772830592169,
       "tag": "20260306205632_left_pete_wisdom",
       "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "7",
+      "when": 1772831301396,
+      "tag": "20260306210821_ancient_jackpot",
+      "breakpoints": true
     }
   ]
 }

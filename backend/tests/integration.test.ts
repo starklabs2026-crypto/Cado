@@ -16,9 +16,11 @@ describe("API Integration Tests", () => {
   let user2Id: string;
   let groupId: string;
   let groupIdForRejection: string;
+  let groupIdForInviteLink: string;
   let invitationId: string;
   let invitationIdForRejection: string;
   let notificationId: string;
+  let inviteToken: string;
 
   test("Sign up test user", async () => {
     const { token, user } = await signUpTestUser();
@@ -592,6 +594,22 @@ describe("API Integration Tests", () => {
     expect(data.groupId).toBeDefined();
   });
 
+  test("Create third group for invite link test", async () => {
+    const res = await authenticatedApi("/api/groups/create-private", authToken, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        name: "Group for Invite Link Test",
+        description: "Testing invite link generation",
+        invitedUserIds: [],
+      }),
+    });
+    await expectStatus(res, 201);
+    const data = await res.json();
+    groupIdForInviteLink = data.groupId;
+    expect(data.groupId).toBeDefined();
+  });
+
   test("Get all groups", async () => {
     const res = await authenticatedApi("/api/groups", authToken);
     await expectStatus(res, 200);
@@ -600,7 +618,7 @@ describe("API Integration Tests", () => {
     expect(Array.isArray(data.myGroups)).toBe(true);
     expect(data.discoverGroups).toBeDefined();
     expect(Array.isArray(data.discoverGroups)).toBe(true);
-    expect(data.myGroups.length).toBeGreaterThanOrEqual(2);
+    expect(data.myGroups.length).toBeGreaterThanOrEqual(3);
   });
 
   test("Get all groups for second user", async () => {
@@ -670,6 +688,92 @@ describe("API Integration Tests", () => {
       }),
     });
     await expectStatus(res, 400);
+  });
+
+  // ===== Group Invite Link Tests =====
+
+  test("Generate invite link for group", async () => {
+    const res = await authenticatedApi(
+      `/api/groups/${groupIdForInviteLink}/generate-invite-link`,
+      authToken,
+      {
+        method: "POST",
+      }
+    );
+    await expectStatus(res, 200);
+    const data = await res.json();
+    expect(data.inviteLink).toBeDefined();
+    expect(data.inviteToken).toBeDefined();
+    inviteToken = data.inviteToken;
+  });
+
+  test("Generate invite link for non-existent group returns 404", async () => {
+    const res = await authenticatedApi(
+      "/api/groups/00000000-0000-0000-0000-000000000000/generate-invite-link",
+      authToken,
+      {
+        method: "POST",
+      }
+    );
+    await expectStatus(res, 404);
+  });
+
+  test("Generate invite link without auth returns 401", async () => {
+    const res = await api(
+      `/api/groups/${groupIdForInviteLink}/generate-invite-link`,
+      {
+        method: "POST",
+      }
+    );
+    await expectStatus(res, 401);
+  });
+
+  test("Join group by invite token", async () => {
+    const res = await authenticatedApi(
+      "/api/groups/join-by-invite",
+      token2,
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          inviteToken: inviteToken,
+        }),
+      }
+    );
+    await expectStatus(res, 200);
+    const data = await res.json();
+    expect(data.success).toBe(true);
+    expect(data.groupId).toBeDefined();
+    expect(data.groupName).toBeDefined();
+  });
+
+  test("Join group by invalid token returns 403 or 404", async () => {
+    const res = await authenticatedApi(
+      "/api/groups/join-by-invite",
+      token2,
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          inviteToken: "invalid-token-xyz",
+        }),
+      }
+    );
+    await expectStatus(res, 403, 404);
+  });
+
+  test("Join group by invite token without auth returns 401", async () => {
+    const res = await api(
+      "/api/groups/join-by-invite",
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          inviteToken: inviteToken,
+        }),
+      }
+    );
+    await expectStatus(res, 401);
   });
 
   // ===== Group Messages Tests =====

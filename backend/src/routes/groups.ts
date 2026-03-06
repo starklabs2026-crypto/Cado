@@ -1,6 +1,7 @@
 import type { App } from '../index.js';
 import type { FastifyRequest, FastifyReply } from 'fastify';
 import { eq, and } from 'drizzle-orm';
+import { randomUUID } from 'crypto';
 import * as schema from '../db/schema/schema.js';
 
 interface CreateGroupBody {
@@ -627,6 +628,193 @@ export function registerGroupRoutes(app: App) {
         userName: 'User', // In a real app, would fetch from user profile
         createdAt: msg.createdAt.toISOString(),
       }));
+    }
+  );
+
+  // POST /api/groups/:id/generate-invite-link - Generate an invite link for a group (admin only)
+  app.fastify.post<{ Params: { id: string } }>(
+    '/api/groups/:id/generate-invite-link',
+    {
+      schema: {
+        description: 'Generate an invite link for a group (admin only)',
+        tags: ['groups'],
+        params: {
+          type: 'object',
+          required: ['id'],
+          properties: {
+            id: { type: 'string', format: 'uuid' },
+          },
+        },
+        response: {
+          200: {
+            type: 'object',
+            properties: {
+              inviteLink: { type: 'string' },
+              inviteToken: { type: 'string' },
+            },
+          },
+          401: {
+            type: 'object',
+            properties: { error: { type: 'string' } },
+          },
+          403: {
+            type: 'object',
+            properties: { error: { type: 'string' } },
+          },
+          404: {
+            type: 'object',
+            properties: { error: { type: 'string' } },
+          },
+        },
+      },
+    },
+    async (request: FastifyRequest<{ Params: { id: string } }>, reply: FastifyReply) => {
+      const session = await requireAuth(request, reply);
+      if (!session) return;
+
+      const { id } = request.params;
+      app.logger.info({ userId: session.user.id, groupId: id }, 'Generating invite link');
+
+      // Get group details
+      const group = await app.db
+        .select()
+        .from(schema.groups)
+        .where(eq(schema.groups.id, id))
+        .limit(1);
+
+      if (group.length === 0) {
+        app.logger.warn({ groupId: id }, 'Group not found');
+        return reply.status(404).send({ error: 'Group not found' });
+      }
+
+      // Check if user is an admin of the group
+      const membership = await app.db
+        .select()
+        .from(schema.groupMembers)
+        .where(
+          and(eq(schema.groupMembers.groupId, id), eq(schema.groupMembers.userId, session.user.id))
+        )
+        .limit(1);
+
+      if (membership.length === 0 || membership[0].role !== 'admin') {
+        app.logger.warn(
+          { userId: session.user.id, groupId: id, role: membership[0]?.role },
+          'User is not an admin of this group'
+        );
+        return reply.status(403).send({ error: 'Only admins can generate invite links' });
+      }
+
+      // Generate a unique invite token
+      const inviteToken = randomUUID();
+
+      // Update group with invite token
+      await app.db
+        .update(schema.groups)
+        .set({ inviteToken })
+        .where(eq(schema.groups.id, id));
+
+      const inviteLink = `calo://group-invite/${inviteToken}`;
+      app.logger.info({ groupId: id, inviteToken }, 'Invite link generated');
+
+      return {
+        inviteLink,
+        inviteToken,
+      };
+    }
+  );
+
+  // POST /api/groups/join-by-invite - Join a group using an invite token
+  app.fastify.post<{ Body: { inviteToken: string } }>(
+    '/api/groups/join-by-invite',
+    {
+      schema: {
+        description: 'Join a group using an invite token',
+        tags: ['groups'],
+        body: {
+          type: 'object',
+          required: ['inviteToken'],
+          properties: {
+            inviteToken: { type: 'string' },
+          },
+        },
+        response: {
+          200: {
+            type: 'object',
+            properties: {
+              success: { type: 'boolean' },
+              groupId: { type: 'string', format: 'uuid' },
+              groupName: { type: 'string' },
+              message: { type: 'string' },
+            },
+          },
+          401: {
+            type: 'object',
+            properties: { error: { type: 'string' } },
+          },
+          403: {
+            type: 'object',
+            properties: { error: { type: 'string' } },
+          },
+          404: {
+            type: 'object',
+            properties: { error: { type: 'string' } },
+          },
+        },
+      },
+    },
+    async (request: FastifyRequest<{ Body: { inviteToken: string } }>, reply: FastifyReply) => {
+      const session = await requireAuth(request, reply);
+      if (!session) return;
+
+      const { inviteToken } = request.body;
+      app.logger.info({ userId: session.user.id, inviteToken }, 'User attempting to join group via invite');
+
+      // Find group by invite token
+      const group = await app.db
+        .select()
+        .from(schema.groups)
+        .where(eq(schema.groups.inviteToken, inviteToken))
+        .limit(1);
+
+      if (group.length === 0) {
+        app.logger.warn({ inviteToken }, 'Invalid invite token');
+        return reply.status(404).send({ error: 'Invalid invite token' });
+      }
+
+      const groupId = group[0].id;
+      const groupName = group[0].name;
+
+      // Check if user is already a member
+      const existingMembership = await app.db
+        .select()
+        .from(schema.groupMembers)
+        .where(
+          and(eq(schema.groupMembers.groupId, groupId), eq(schema.groupMembers.userId, session.user.id))
+        )
+        .limit(1);
+
+      if (existingMembership.length > 0) {
+        app.logger.warn({ userId: session.user.id, groupId }, 'User already a member');
+        return reply.status(403).send({ error: 'You are already a member of this group' });
+      }
+
+      // Add user as member
+      await app.db
+        .insert(schema.groupMembers)
+        .values({
+          groupId,
+          userId: session.user.id,
+          role: 'member',
+        });
+
+      app.logger.info({ userId: session.user.id, groupId }, 'User joined group via invite');
+
+      return {
+        success: true,
+        groupId,
+        groupName,
+        message: `You have successfully joined the group "${groupName}"`,
+      };
     }
   );
 }
