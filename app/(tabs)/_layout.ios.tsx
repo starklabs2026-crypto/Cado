@@ -12,6 +12,10 @@ export default function TabLayout() {
         <Label>History</Label>
         <Icon sf={{ default: 'calendar', selected: 'calendar.badge.clock' }} drawable="calendar-today" />
       </NativeTabs.Trigger>
+      <NativeTabs.Trigger name="groups">
+        <Label>Groups</Label>
+        <Icon sf={{ default: 'person.3', selected: 'person.3.fill' }} drawable="group" />
+      </NativeTabs.Trigger>
       <NativeTabs.Trigger name="profile">
         <Label>Profile</Label>
         <Icon sf={{ default: 'person', selected: 'person.fill' }} drawable="person" />
