@@ -1,5 +1,5 @@
 
-import { useColorScheme, View, ActivityIndicator } from "react-native";
+import { useColorScheme, View, ActivityIndicator, Linking } from "react-native";
 import { useFonts } from "expo-font";
 import { SystemBars } from "react-native-edge-to-edge";
 import { GestureHandlerRootView } from "react-native-gesture-handler";
@@ -41,6 +41,47 @@ function AuthGate({ children }: { children: React.ReactNode }) {
   useEffect(() => {
     handleAuthRedirect();
   }, [handleAuthRedirect]);
+
+  // Handle deep links for group invites
+  useEffect(() => {
+    const handleDeepLink = (event: { url: string }) => {
+      console.log('[DeepLink] Received deep link:', event.url);
+      
+      // Parse the URL to extract the invite token
+      // Format: iwanttobuildaca://group-invite/{token}
+      const url = event.url;
+      const groupInviteMatch = url.match(/group-invite\/([^/?]+)/);
+      
+      if (groupInviteMatch && groupInviteMatch[1]) {
+        const token = groupInviteMatch[1];
+        console.log('[DeepLink] Extracted invite token:', token);
+        
+        // Navigate to the join-group screen
+        if (user) {
+          router.push(`/join-group/${token}`);
+        } else {
+          console.log('[DeepLink] User not authenticated, will redirect after login');
+          // Store the token to redirect after login
+          // For now, just log it
+        }
+      }
+    };
+
+    // Handle initial URL (app opened via deep link)
+    Linking.getInitialURL().then((url) => {
+      if (url) {
+        console.log('[DeepLink] Initial URL:', url);
+        handleDeepLink({ url });
+      }
+    });
+
+    // Handle deep links while app is running
+    const subscription = Linking.addEventListener('url', handleDeepLink);
+
+    return () => {
+      subscription.remove();
+    };
+  }, [user, router]);
 
   if (loading) {
     return (
@@ -86,6 +127,7 @@ export default function RootLayout() {
                 <Stack.Screen name="camera" options={{ headerShown: true, title: 'Scan Food' }} />
                 <Stack.Screen name="create-group" options={{ headerShown: true, title: 'Create Private Group' }} />
                 <Stack.Screen name="notifications" options={{ headerShown: true, title: 'Notifications' }} />
+                <Stack.Screen name="join-group/[token]" options={{ headerShown: true, title: 'Join Group' }} />
                 <Stack.Screen name="+not-found" />
               </Stack>
             </AuthGate>

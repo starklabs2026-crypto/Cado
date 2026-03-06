@@ -11,6 +11,7 @@ import {
   Platform,
   ActivityIndicator,
   Modal,
+  Clipboard,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Stack, useLocalSearchParams, useRouter } from 'expo-router';
@@ -33,6 +34,7 @@ interface GroupInfo {
   name: string;
   description: string | null;
   memberCount: number;
+  isAdmin: boolean;
 }
 
 export default function GroupChatScreen() {
@@ -48,6 +50,10 @@ export default function GroupChatScreen() {
   const [messageText, setMessageText] = useState('');
   const [errorModalVisible, setErrorModalVisible] = useState(false);
   const [errorModalMessage, setErrorModalMessage] = useState('');
+  const [inviteLinkModalVisible, setInviteLinkModalVisible] = useState(false);
+  const [inviteLink, setInviteLink] = useState('');
+  const [generatingLink, setGeneratingLink] = useState(false);
+  const [linkCopied, setLinkCopied] = useState(false);
 
   useEffect(() => {
     if (id) {
@@ -77,11 +83,16 @@ export default function GroupChatScreen() {
 
       console.log('[GroupChat] Loaded group info:', groupData.name, 'messages:', messagesData.length);
 
+      // Check if current user is admin
+      const currentUserMember = groupData.members?.find((m) => m.userId === user?.id);
+      const isUserAdmin = currentUserMember?.role === 'admin';
+
       setGroupInfo({
         id: groupData.id,
         name: groupData.name,
         description: groupData.description,
         memberCount: groupData.members?.length ?? 0,
+        isAdmin: isUserAdmin,
       });
       setMessages(messagesData || []);
     } catch (error: any) {
@@ -124,6 +135,54 @@ export default function GroupChatScreen() {
       setMessageText(messageToSend);
     } finally {
       setSending(false);
+    }
+  };
+
+  const handleGenerateInviteLink = async () => {
+    if (!id) return;
+
+    console.log('Admin tapped Add Member button - generating invite link');
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+
+    try {
+      setGeneratingLink(true);
+      setLinkCopied(false);
+      console.log('[GroupChat] Generating invite link for group:', id);
+
+      console.log('[GroupChat] Calling POST /api/groups/:id/generate-invite-link');
+      const response = await authenticatedPost<{ inviteLink: string; inviteToken: string }>(
+        `/api/groups/${id}/generate-invite-link`,
+        {}
+      );
+
+      console.log('[GroupChat] Invite link generated:', response.inviteLink, 'token:', response.inviteToken);
+      // Use the inviteLink from the backend (format: calo://group-invite/{token})
+      setInviteLink(response.inviteLink);
+      setInviteLinkModalVisible(true);
+    } catch (error: any) {
+      console.error('Error generating invite link:', error);
+      setErrorModalMessage(error.message || 'Failed to generate invite link');
+      setErrorModalVisible(true);
+    } finally {
+      setGeneratingLink(false);
+    }
+  };
+
+  const handleCopyInviteLink = async () => {
+    console.log('User tapped Copy Link button');
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+
+    try {
+      await Clipboard.setString(inviteLink);
+      setLinkCopied(true);
+      console.log('[GroupChat] Invite link copied to clipboard');
+
+      // Reset copied state after 2 seconds
+      setTimeout(() => {
+        setLinkCopied(false);
+      }, 2000);
+    } catch (error) {
+      console.error('Error copying to clipboard:', error);
     }
   };
 
@@ -173,6 +232,7 @@ export default function GroupChatScreen() {
 
   const groupName = groupInfo?.name || 'Group Chat';
   const memberCountText = groupInfo ? `${groupInfo.memberCount} members` : '';
+  const isAdmin = groupInfo?.isAdmin ?? false;
 
   return (
     <SafeAreaView style={styles.container} edges={['bottom']}>
@@ -181,6 +241,26 @@ export default function GroupChatScreen() {
           headerShown: true,
           title: groupName,
           headerBackTitle: 'Groups',
+          headerRight: isAdmin
+            ? () => (
+                <TouchableOpacity
+                  onPress={handleGenerateInviteLink}
+                  disabled={generatingLink}
+                  style={styles.headerButton}
+                >
+                  {generatingLink ? (
+                    <ActivityIndicator size="small" color={colors.primary} />
+                  ) : (
+                    <IconSymbol
+                      ios_icon_name="person.badge.plus"
+                      android_material_icon_name="person-add"
+                      size={24}
+                      color={colors.primary}
+                    />
+                  )}
+                </TouchableOpacity>
+              )
+            : undefined,
         }}
       />
 
@@ -308,6 +388,60 @@ export default function GroupChatScreen() {
           </View>
         </View>
       </Modal>
+
+      <Modal
+        visible={inviteLinkModalVisible}
+        transparent
+        animationType="slide"
+        onRequestClose={() => setInviteLinkModalVisible(false)}
+      >
+        <View style={styles.modalOverlay}>
+          <View style={styles.inviteLinkModalContent}>
+            <View style={styles.inviteLinkHeader}>
+              <Text style={styles.inviteLinkTitle}>Invite Link</Text>
+              <TouchableOpacity
+                onPress={() => {
+                  setInviteLinkModalVisible(false);
+                  setLinkCopied(false);
+                }}
+                style={styles.closeButton}
+              >
+                <IconSymbol
+                  ios_icon_name="xmark"
+                  android_material_icon_name="close"
+                  size={24}
+                  color={colors.textSecondary}
+                />
+              </TouchableOpacity>
+            </View>
+
+            <Text style={styles.inviteLinkDescription}>
+              Share this link with anyone to let them join this group. Anyone with the link can join.
+            </Text>
+
+            <View style={styles.linkContainer}>
+              <Text style={styles.linkText} numberOfLines={2}>
+                {inviteLink}
+              </Text>
+            </View>
+
+            <TouchableOpacity
+              style={[styles.copyButton, linkCopied && styles.copyButtonSuccess]}
+              onPress={handleCopyInviteLink}
+            >
+              <IconSymbol
+                ios_icon_name={linkCopied ? 'checkmark' : 'doc.on.doc'}
+                android_material_icon_name={linkCopied ? 'check' : 'content-copy'}
+                size={20}
+                color={colors.background}
+              />
+              <Text style={styles.copyButtonText}>
+                {linkCopied ? 'Copied!' : 'Copy Link'}
+              </Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+      </Modal>
     </SafeAreaView>
   );
 }
@@ -321,6 +455,10 @@ const styles = StyleSheet.create({
     flex: 1,
     justifyContent: 'center',
     alignItems: 'center',
+  },
+  headerButton: {
+    marginRight: 16,
+    padding: 4,
   },
   keyboardAvoid: {
     flex: 1,
@@ -474,6 +612,63 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   modalButtonText: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: colors.background,
+  },
+  inviteLinkModalContent: {
+    backgroundColor: colors.card,
+    borderRadius: 20,
+    padding: 24,
+    width: '90%',
+    maxWidth: 400,
+  },
+  inviteLinkHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 16,
+  },
+  inviteLinkTitle: {
+    fontSize: 24,
+    fontWeight: 'bold',
+    color: colors.text,
+  },
+  closeButton: {
+    padding: 4,
+  },
+  inviteLinkDescription: {
+    fontSize: 14,
+    color: colors.textSecondary,
+    marginBottom: 20,
+    lineHeight: 20,
+  },
+  linkContainer: {
+    backgroundColor: colors.background,
+    borderRadius: 12,
+    padding: 16,
+    marginBottom: 20,
+    borderWidth: 1,
+    borderColor: colors.border,
+  },
+  linkText: {
+    fontSize: 14,
+    color: colors.text,
+    fontFamily: Platform.OS === 'ios' ? 'Courier' : 'monospace',
+  },
+  copyButton: {
+    backgroundColor: colors.primary,
+    borderRadius: 12,
+    paddingVertical: 14,
+    flexDirection: 'row',
+    justifyContent: 'center',
+    alignItems: 'center',
+    gap: 8,
+  },
+  copyButtonSuccess: {
+    backgroundColor: '#4CAF50',
+  },
+  copyButtonText: {
     fontSize: 16,
     fontWeight: '600',
     color: colors.background,
