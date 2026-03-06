@@ -113,24 +113,41 @@ export function registerGroupRoutes(app: App) {
     }
   );
 
-  // GET /api/groups - Get all groups for the authenticated user
+  // GET /api/groups - Get myGroups and discoverGroups for the authenticated user
   app.fastify.get('/api/groups', {
     schema: {
-      description: 'Get all groups the user is a member of',
+      description: 'Get user groups and public groups to discover',
       tags: ['groups'],
       response: {
         200: {
-          type: 'array',
-          items: {
-            type: 'object',
-            properties: {
-              id: { type: 'string', format: 'uuid' },
-              name: { type: 'string' },
-              description: { type: ['string', 'null'] },
-              memberCount: { type: 'number' },
-              isPrivate: { type: 'boolean' },
-              role: { type: 'string' },
-              createdAt: { type: 'string', format: 'date-time' },
+          type: 'object',
+          properties: {
+            myGroups: {
+              type: 'array',
+              items: {
+                type: 'object',
+                properties: {
+                  id: { type: 'string', format: 'uuid' },
+                  name: { type: 'string' },
+                  description: { type: ['string', 'null'] },
+                  memberCount: { type: 'number' },
+                  isPrivate: { type: 'boolean' },
+                  role: { type: 'string' },
+                  createdAt: { type: 'string', format: 'date-time' },
+                },
+              },
+            },
+            discoverGroups: {
+              type: 'array',
+              items: {
+                type: 'object',
+                properties: {
+                  id: { type: 'string', format: 'uuid' },
+                  name: { type: 'string' },
+                  description: { type: ['string', 'null'] },
+                  memberCount: { type: 'number' },
+                },
+              },
             },
           },
         },
@@ -144,9 +161,9 @@ export function registerGroupRoutes(app: App) {
     const session = await requireAuth(request, reply);
     if (!session) return;
 
-    app.logger.info({ userId: session.user.id }, 'Fetching user groups');
+    app.logger.info({ userId: session.user.id }, 'Fetching user groups and discover groups');
 
-    // Get all groups the user is a member of
+    // Get all groups the user is a member of (myGroups)
     const userGroups = await app.db
       .select({
         groupId: schema.groups.id,
@@ -160,8 +177,8 @@ export function registerGroupRoutes(app: App) {
       .innerJoin(schema.groups, eq(schema.groupMembers.groupId, schema.groups.id))
       .where(eq(schema.groupMembers.userId, session.user.id));
 
-    // Get member counts for each group
-    const result = await Promise.all(
+    // Get member counts for myGroups
+    const myGroups = await Promise.all(
       userGroups.map(async (group) => {
         const members = await app.db
           .select()
@@ -180,8 +197,37 @@ export function registerGroupRoutes(app: App) {
       })
     );
 
-    app.logger.info({ userId: session.user.id, count: result.length }, 'User groups retrieved');
-    return result;
+    // Get all public groups (discoverGroups) that the user is NOT a member of
+    const allPublicGroups = await app.db
+      .select()
+      .from(schema.groups)
+      .where(eq(schema.groups.isPrivate, false));
+
+    const userGroupIds = new Set(userGroups.map((g) => g.groupId));
+
+    const discoverGroups = await Promise.all(
+      allPublicGroups
+        .filter((group) => !userGroupIds.has(group.id))
+        .map(async (group) => {
+          const members = await app.db
+            .select()
+            .from(schema.groupMembers)
+            .where(eq(schema.groupMembers.groupId, group.id));
+
+          return {
+            id: group.id,
+            name: group.name,
+            description: group.description,
+            memberCount: members.length,
+          };
+        })
+    );
+
+    app.logger.info(
+      { userId: session.user.id, myGroupsCount: myGroups.length, discoverGroupsCount: discoverGroups.length },
+      'Groups retrieved'
+    );
+    return { myGroups, discoverGroups };
   });
 
   // GET /api/groups/:id - Get detailed info about a specific group
@@ -380,6 +426,207 @@ export function registerGroupRoutes(app: App) {
         success: true,
         message: `You have successfully joined the group "${group[0].name}"`,
       };
+    }
+  );
+
+  // POST /api/groups/:id/messages - Send a message to a group
+  app.fastify.post<{ Params: { id: string }; Body: { content: string } }>(
+    '/api/groups/:id/messages',
+    {
+      schema: {
+        description: 'Send a message to a group chat',
+        tags: ['group-messages'],
+        params: {
+          type: 'object',
+          required: ['id'],
+          properties: {
+            id: { type: 'string', format: 'uuid' },
+          },
+        },
+        body: {
+          type: 'object',
+          required: ['content'],
+          properties: {
+            content: { type: 'string' },
+          },
+        },
+        response: {
+          201: {
+            type: 'object',
+            properties: {
+              id: { type: 'string', format: 'uuid' },
+              content: { type: 'string' },
+              userId: { type: 'string' },
+              userName: { type: 'string' },
+              createdAt: { type: 'string', format: 'date-time' },
+            },
+          },
+          401: {
+            type: 'object',
+            properties: { error: { type: 'string' } },
+          },
+          403: {
+            type: 'object',
+            properties: { error: { type: 'string' } },
+          },
+          404: {
+            type: 'object',
+            properties: { error: { type: 'string' } },
+          },
+        },
+      },
+    },
+    async (request: FastifyRequest<{ Params: { id: string }; Body: { content: string } }>, reply: FastifyReply) => {
+      const session = await requireAuth(request, reply);
+      if (!session) return;
+
+      const { id } = request.params;
+      const { content } = request.body;
+
+      app.logger.info({ userId: session.user.id, groupId: id }, 'Sending group message');
+
+      // Check if group exists
+      const group = await app.db
+        .select()
+        .from(schema.groups)
+        .where(eq(schema.groups.id, id))
+        .limit(1);
+
+      if (group.length === 0) {
+        app.logger.warn({ groupId: id }, 'Group not found');
+        return reply.status(404).send({ error: 'Group not found' });
+      }
+
+      // Check if user is a member of the group
+      const membership = await app.db
+        .select()
+        .from(schema.groupMembers)
+        .where(
+          and(eq(schema.groupMembers.groupId, id), eq(schema.groupMembers.userId, session.user.id))
+        )
+        .limit(1);
+
+      if (membership.length === 0) {
+        app.logger.warn({ userId: session.user.id, groupId: id }, 'User not a group member');
+        return reply.status(403).send({ error: 'You are not a member of this group' });
+      }
+
+      // Create the message
+      const message = await app.db
+        .insert(schema.groupMessages)
+        .values({
+          groupId: id,
+          userId: session.user.id,
+          content,
+        })
+        .returning();
+
+      app.logger.info({ messageId: message[0].id, groupId: id, userId: session.user.id }, 'Group message sent');
+
+      return reply.status(201).send({
+        id: message[0].id,
+        content: message[0].content,
+        userId: message[0].userId,
+        userName: session.user.name || 'Anonymous',
+        createdAt: message[0].createdAt.toISOString(),
+      });
+    }
+  );
+
+  // GET /api/groups/:id/messages - Get all messages for a group
+  app.fastify.get<{ Params: { id: string } }>(
+    '/api/groups/:id/messages',
+    {
+      schema: {
+        description: 'Get all messages for a group chat',
+        tags: ['group-messages'],
+        params: {
+          type: 'object',
+          required: ['id'],
+          properties: {
+            id: { type: 'string', format: 'uuid' },
+          },
+        },
+        response: {
+          200: {
+            type: 'array',
+            items: {
+              type: 'object',
+              properties: {
+                id: { type: 'string', format: 'uuid' },
+                content: { type: 'string' },
+                userId: { type: 'string' },
+                userName: { type: 'string' },
+                createdAt: { type: 'string', format: 'date-time' },
+              },
+            },
+          },
+          401: {
+            type: 'object',
+            properties: { error: { type: 'string' } },
+          },
+          403: {
+            type: 'object',
+            properties: { error: { type: 'string' } },
+          },
+          404: {
+            type: 'object',
+            properties: { error: { type: 'string' } },
+          },
+        },
+      },
+    },
+    async (request: FastifyRequest<{ Params: { id: string } }>, reply: FastifyReply) => {
+      const session = await requireAuth(request, reply);
+      if (!session) return;
+
+      const { id } = request.params;
+
+      app.logger.info({ userId: session.user.id, groupId: id }, 'Fetching group messages');
+
+      // Check if group exists
+      const group = await app.db
+        .select()
+        .from(schema.groups)
+        .where(eq(schema.groups.id, id))
+        .limit(1);
+
+      if (group.length === 0) {
+        app.logger.warn({ groupId: id }, 'Group not found');
+        return reply.status(404).send({ error: 'Group not found' });
+      }
+
+      // Check if user is a member of the group
+      const membership = await app.db
+        .select()
+        .from(schema.groupMembers)
+        .where(
+          and(eq(schema.groupMembers.groupId, id), eq(schema.groupMembers.userId, session.user.id))
+        )
+        .limit(1);
+
+      if (membership.length === 0) {
+        app.logger.warn({ userId: session.user.id, groupId: id }, 'User not a group member');
+        return reply.status(403).send({ error: 'You are not a member of this group' });
+      }
+
+      // Get all messages for the group
+      const messages = await app.db
+        .select()
+        .from(schema.groupMessages)
+        .where(eq(schema.groupMessages.groupId, id))
+        .orderBy((msg) => msg.createdAt);
+
+      app.logger.info({ groupId: id, messageCount: messages.length }, 'Group messages retrieved');
+
+      // Return messages with user names (in real app, would join with user table)
+      return messages.map((msg) => ({
+        id: msg.id,
+        content: msg.content,
+        userId: msg.userId,
+        userName: 'User', // In a real app, would fetch from user profile
+        createdAt: msg.createdAt.toISOString(),
+      }));
     }
   );
 }

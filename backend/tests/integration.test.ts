@@ -15,7 +15,9 @@ describe("API Integration Tests", () => {
   let token2: string;
   let user2Id: string;
   let groupId: string;
+  let groupIdForRejection: string;
   let invitationId: string;
+  let invitationIdForRejection: string;
   let notificationId: string;
 
   test("Sign up test user", async () => {
@@ -574,20 +576,41 @@ describe("API Integration Tests", () => {
     expect(data.invitationsSent).toBe(1);
   });
 
+  test("Create second group for rejection test", async () => {
+    const res = await authenticatedApi("/api/groups/create-private", authToken, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        name: "Group for Rejection Test",
+        description: "Testing invitation rejection",
+        invitedUserIds: [user2Id],
+      }),
+    });
+    await expectStatus(res, 201);
+    const data = await res.json();
+    groupIdForRejection = data.groupId;
+    expect(data.groupId).toBeDefined();
+  });
+
   test("Get all groups", async () => {
     const res = await authenticatedApi("/api/groups", authToken);
     await expectStatus(res, 200);
     const data = await res.json();
-    expect(Array.isArray(data)).toBe(true);
-    // First user should see the group they created
-    expect(data.length).toBeGreaterThanOrEqual(1);
+    expect(data.myGroups).toBeDefined();
+    expect(Array.isArray(data.myGroups)).toBe(true);
+    expect(data.discoverGroups).toBeDefined();
+    expect(Array.isArray(data.discoverGroups)).toBe(true);
+    expect(data.myGroups.length).toBeGreaterThanOrEqual(2);
   });
 
   test("Get all groups for second user", async () => {
     const res = await authenticatedApi("/api/groups", token2);
     await expectStatus(res, 200);
     const data = await res.json();
-    expect(Array.isArray(data)).toBe(true);
+    expect(data.myGroups).toBeDefined();
+    expect(Array.isArray(data.myGroups)).toBe(true);
+    expect(data.discoverGroups).toBeDefined();
+    expect(Array.isArray(data.discoverGroups)).toBe(true);
   });
 
   test("Get group details by ID", async () => {
@@ -649,6 +672,98 @@ describe("API Integration Tests", () => {
     await expectStatus(res, 400);
   });
 
+  // ===== Group Messages Tests =====
+
+  test("Send message to group", async () => {
+    const res = await authenticatedApi(
+      `/api/groups/${groupId}/messages`,
+      authToken,
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          content: "Hello, group!",
+        }),
+      }
+    );
+    await expectStatus(res, 201);
+    const data = await res.json();
+    expect(data.id).toBeDefined();
+    expect(data.content).toBe("Hello, group!");
+    expect(data.userId).toBeDefined();
+    expect(data.userName).toBeDefined();
+    expect(data.createdAt).toBeDefined();
+  });
+
+  test("Send message to non-existent group returns 404", async () => {
+    const res = await authenticatedApi(
+      "/api/groups/00000000-0000-0000-0000-000000000000/messages",
+      authToken,
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          content: "This will fail",
+        }),
+      }
+    );
+    await expectStatus(res, 404);
+  });
+
+  test("Send message without required content returns 400", async () => {
+    const res = await authenticatedApi(
+      `/api/groups/${groupId}/messages`,
+      authToken,
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({}),
+      }
+    );
+    await expectStatus(res, 400);
+  });
+
+  test("Send message to group without auth returns 401", async () => {
+    const res = await api(`/api/groups/${groupId}/messages`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        content: "Unauthorized",
+      }),
+    });
+    await expectStatus(res, 401);
+  });
+
+  test("Get group messages", async () => {
+    const res = await authenticatedApi(
+      `/api/groups/${groupId}/messages`,
+      authToken
+    );
+    await expectStatus(res, 200);
+    const data = await res.json();
+    expect(Array.isArray(data)).toBe(true);
+    if (data.length > 0) {
+      expect(data[0].id).toBeDefined();
+      expect(data[0].content).toBeDefined();
+      expect(data[0].userId).toBeDefined();
+      expect(data[0].userName).toBeDefined();
+      expect(data[0].createdAt).toBeDefined();
+    }
+  });
+
+  test("Get messages from non-existent group returns 404", async () => {
+    const res = await authenticatedApi(
+      "/api/groups/00000000-0000-0000-0000-000000000000/messages",
+      authToken
+    );
+    await expectStatus(res, 404);
+  });
+
+  test("Get group messages without auth returns 401", async () => {
+    const res = await api(`/api/groups/${groupId}/messages`);
+    await expectStatus(res, 401);
+  });
+
   // ===== Group Invitations Tests =====
 
   test("Get pending group invitations", async () => {
@@ -659,12 +774,18 @@ describe("API Integration Tests", () => {
     await expectStatus(res, 200);
     const data = await res.json();
     expect(Array.isArray(data)).toBe(true);
-    // Second user should have an invitation from the group created above
+    // Second user should have invitations from the groups created above
     if (data.length > 0) {
-      invitationId = data[0].id;
-      expect(data[0].groupId).toBeDefined();
-      expect(data[0].groupName).toBeDefined();
-      expect(data[0].invitedByUserId).toBeDefined();
+      // Find the first invitation for acceptance test
+      const invitation = data.find(inv => inv.groupId === groupId);
+      if (invitation) {
+        invitationId = invitation.id;
+      }
+      // Find the invitation from the second group (for rejection test)
+      const rejectionInvitation = data.find(inv => inv.groupId === groupIdForRejection);
+      if (rejectionInvitation) {
+        invitationIdForRejection = rejectionInvitation.id;
+      }
     }
   });
 
@@ -681,6 +802,21 @@ describe("API Integration Tests", () => {
       const data = await res.json();
       expect(data.success).toBe(true);
       expect(data.groupId).toBeDefined();
+    }
+  });
+
+  test("Reject group invitation", async () => {
+    if (invitationIdForRejection) {
+      const res = await authenticatedApi(
+        `/api/group-invitations/${invitationIdForRejection}/reject`,
+        token2,
+        {
+          method: "POST",
+        }
+      );
+      await expectStatus(res, 200);
+      const data = await res.json();
+      expect(data.success).toBe(true);
     }
   });
 
@@ -805,7 +941,6 @@ describe("API Integration Tests", () => {
   // ===== Group Join Tests =====
 
   test("Join public group", async () => {
-    // Create a public group first - if create-private is available, test join on an existing group
     // Try to join the group we already created (may be private or public)
     const res = await authenticatedApi(
       `/api/groups/${groupId}/join`,
