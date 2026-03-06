@@ -113,14 +113,12 @@ export default function CameraScreen() {
     setAnalysisResult(null);
 
     try {
-      // Create form data
       const formData = new FormData();
       
-      // Get file extension
       const uriParts = imageUri.split('.');
       const fileType = uriParts[uriParts.length - 1];
       
-      // @ts-ignore - FormData append accepts this format in React Native
+      // @ts-expect-error - FormData append accepts this format in React Native
       formData.append('image', {
         uri: imageUri,
         name: `food-photo.${fileType}`,
@@ -129,8 +127,6 @@ export default function CameraScreen() {
 
       console.log('[API] Sending image to backend for analysis');
 
-      // TODO: Backend Integration - POST /api/food/analyze-image with multipart form data
-      // Returns: { foodName, calories, protein, carbs, fat, imageUrl, confidence }
       const result = await authenticatedPost<AnalysisResult>('/api/food/analyze-image', formData);
 
       console.log('[API] Analysis result:', result);
@@ -166,15 +162,11 @@ export default function CameraScreen() {
 
       console.log('[API] Payload:', payload);
 
-      // TODO: Backend Integration - POST /api/food-entries/from-image
-      // Body: { foodName, calories, protein, carbs, fat, imageUrl, mealType }
-      // Returns: created food entry with recognized_by_ai = true
       await authenticatedPost('/api/food-entries/from-image', payload);
 
       console.log('[API] Food entry saved successfully');
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
       
-      // Navigate back to home
       router.back();
     } catch (error: any) {
       console.error('[API] Error saving entry:', error);

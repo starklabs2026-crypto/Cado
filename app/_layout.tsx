@@ -12,7 +12,7 @@ import {
 } from "@react-navigation/native";
 import "react-native-reanimated";
 import { StatusBar } from "expo-status-bar";
-import React, { useEffect } from "react";
+import React, { useEffect, useCallback } from "react";
 import { WidgetProvider } from "@/contexts/WidgetContext";
 import { AuthProvider, useAuth } from "@/contexts/AuthContext";
 import { Stack, useRouter, useSegments } from "expo-router";
@@ -24,7 +24,7 @@ function AuthGate({ children }: { children: React.ReactNode }) {
   const router = useRouter();
   const segments = useSegments();
 
-  useEffect(() => {
+  const handleAuthRedirect = useCallback(() => {
     if (loading) return;
 
     const inAuthGroup = segments[0] === "auth" || segments[0] === "auth-popup" || segments[0] === "auth-callback";
@@ -36,7 +36,11 @@ function AuthGate({ children }: { children: React.ReactNode }) {
       console.log("[AuthGate] User authenticated, redirecting to /");
       router.replace("/");
     }
-  }, [user, loading, segments]);
+  }, [user, loading, segments, router]);
+
+  useEffect(() => {
+    handleAuthRedirect();
+  }, [handleAuthRedirect]);
 
   if (loading) {
     return (

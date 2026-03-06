@@ -1,5 +1,5 @@
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import {
   View,
   Text,
@@ -74,18 +74,7 @@ export default function HomeScreen() {
     setErrorModal({ visible: true, title, message });
   };
 
-  useEffect(() => {
-    console.log('HomeScreen mounted, user:', user);
-    if (!authLoading && !user) {
-      console.log('User not authenticated, redirecting to auth');
-      router.replace('/auth');
-    } else if (user) {
-      console.log('User authenticated, loading data');
-      loadData();
-    }
-  }, [user, authLoading]);
-
-  const loadData = async () => {
+  const loadData = useCallback(async () => {
     console.log('[API] Loading food entries and stats');
     setLoading(true);
     try {
@@ -106,7 +95,18 @@ export default function HomeScreen() {
     } finally {
       setLoading(false);
     }
-  };
+  }, []);
+
+  useEffect(() => {
+    console.log('HomeScreen mounted, user:', user);
+    if (!authLoading && !user) {
+      console.log('User not authenticated, redirecting to auth');
+      router.replace('/auth');
+    } else if (user) {
+      console.log('User authenticated, loading data');
+      loadData();
+    }
+  }, [user, authLoading, router, loadData]);
 
   const handleAddEntry = async () => {
     if (!foodName.trim() || !calories.trim()) {
@@ -211,17 +211,17 @@ export default function HomeScreen() {
   const remainingCalories = Math.max(calorieGoal - stats.totalCalories, 0);
 
   return (
-    <SafeAreaView style={styles.container} edges={['bottom']}>
+    <SafeAreaView style={styles.container} edges={['top']}>
       <Stack.Screen
         options={{
-          headerShown: true,
-          headerLargeTitle: true,
-          title: 'Calo',
-          headerSearchBarOptions: {
-            placeholder: 'Search foods...',
-          },
+          headerShown: false,
         }}
       />
+      
+      <View style={styles.header}>
+        <Text style={styles.headerTitle}>Calo</Text>
+        <Text style={styles.headerSubtitle}>Track your nutrition</Text>
+      </View>
 
       <ScrollView style={styles.scrollView} showsVerticalScrollIndicator={false}>
         {/* Stats Card */}
@@ -541,6 +541,20 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     backgroundColor: colors.background,
   },
+  header: {
+    paddingHorizontal: 20,
+    paddingBottom: 16,
+  },
+  headerTitle: {
+    fontSize: 32,
+    fontWeight: '700',
+    color: colors.text,
+    marginBottom: 4,
+  },
+  headerSubtitle: {
+    fontSize: 16,
+    color: colors.textSecondary,
+  },
   scrollView: {
     flex: 1,
     paddingHorizontal: 20,
@@ -550,7 +564,6 @@ const styles = StyleSheet.create({
     borderRadius: 20,
     padding: 24,
     marginBottom: 24,
-    marginTop: 8,
     shadowColor: '#000',
     shadowOffset: { width: 0, height: 2 },
     shadowOpacity: 0.1,

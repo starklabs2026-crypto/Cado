@@ -1,5 +1,5 @@
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import {
   View,
   Text,
@@ -75,18 +75,7 @@ export default function HomeScreen() {
     setErrorModal({ visible: true, title, message });
   };
 
-  useEffect(() => {
-    console.log('HomeScreen mounted, user:', user);
-    if (!authLoading && !user) {
-      console.log('User not authenticated, redirecting to auth');
-      router.replace('/auth');
-    } else if (user) {
-      console.log('User authenticated, loading data');
-      loadData();
-    }
-  }, [user, authLoading]);
-
-  const loadData = async () => {
+  const loadData = useCallback(async () => {
     console.log('[API] Loading food entries and stats');
     setLoading(true);
     try {
@@ -107,7 +96,18 @@ export default function HomeScreen() {
     } finally {
       setLoading(false);
     }
-  };
+  }, []);
+
+  useEffect(() => {
+    console.log('HomeScreen mounted, user:', user);
+    if (!authLoading && !user) {
+      console.log('User not authenticated, redirecting to auth');
+      router.replace('/auth');
+    } else if (user) {
+      console.log('User authenticated, loading data');
+      loadData();
+    }
+  }, [user, authLoading, router, loadData]);
 
   const handleAddEntry = async () => {
     if (!foodName.trim() || !calories.trim()) {
