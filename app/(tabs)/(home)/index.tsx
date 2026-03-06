@@ -13,7 +13,7 @@ import {
   Image,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { Stack, useRouter } from 'expo-router';
+import { Stack, useRouter, Redirect } from 'expo-router';
 import { IconSymbol } from '@/components/IconSymbol';
 import { colors } from '@/styles/commonStyles';
 import { useAuth } from '@/contexts/AuthContext';
@@ -41,6 +41,12 @@ interface TodayStats {
   entryCount: number;
 }
 
+interface UserProfile {
+  onboarding_completed: boolean;
+  daily_calorie_target?: number;
+  is_pro: boolean;
+}
+
 export default function HomeScreen() {
   const router = useRouter();
   const { user, loading: authLoading } = useAuth();
@@ -52,6 +58,7 @@ export default function HomeScreen() {
     totalFat: 0,
     entryCount: 0,
   });
+  const [profile, setProfile] = useState<UserProfile | null>(null);
   const [loading, setLoading] = useState(true);
   const [showAddModal, setShowAddModal] = useState(false);
   const [showDeleteModal, setShowDeleteModal] = useState(false);
@@ -76,23 +83,27 @@ export default function HomeScreen() {
   };
 
   const loadData = useCallback(async () => {
-    console.log('[API] Loading food entries and stats');
+    console.log('[API] Loading food entries, stats, and profile');
     setLoading(true);
     try {
-      const [todayEntries, todayStats] = await Promise.all([
+      const [todayEntries, todayStats, userProfile] = await Promise.all([
         authenticatedGet<FoodEntry[]>('/api/food-entries/today'),
         authenticatedGet<TodayStats>('/api/food-entries/stats/today'),
+        authenticatedGet<UserProfile>('/api/user/profile'),
       ]);
 
       console.log('[API] Today entries:', todayEntries);
       console.log('[API] Today stats:', todayStats);
+      console.log('[API] User profile:', userProfile);
 
       setEntries(todayEntries);
       setStats(todayStats);
+      setProfile(userProfile);
+      
       console.log('[API] Data loaded successfully');
     } catch (error) {
       console.error('[API] Error loading data:', error);
-      showError('Error', 'Failed to load food entries. Please try again.');
+      showError('Error', 'Failed to load data. Please try again.');
     } finally {
       setLoading(false);
     }
@@ -207,9 +218,40 @@ export default function HomeScreen() {
     );
   }
 
-  const calorieGoal = 2000;
+  // Redirect to onboarding if not completed
+  if (profile && !profile.onboarding_completed) {
+    return <Redirect href="/onboarding" />;
+  }
+
+  const calorieGoal = profile?.daily_calorie_target || 2000;
   const calorieProgress = Math.min((stats.totalCalories / calorieGoal) * 100, 100);
   const remainingCalories = Math.max(calorieGoal - stats.totalCalories, 0);
+
+  // Group entries by meal type
+  const groupedEntries: { [key: string]: FoodEntry[] } = {
+    breakfast: [],
+    lunch: [],
+    snack: [],
+    dinner: [],
+    other: [],
+  };
+
+  entries.forEach((entry) => {
+    const mealType = entry.mealType?.toLowerCase() || 'other';
+    if (groupedEntries[mealType]) {
+      groupedEntries[mealType].push(entry);
+    } else {
+      groupedEntries.other.push(entry);
+    }
+  });
+
+  const mealSections = [
+    { key: 'breakfast', label: 'Breakfast', icon: 'wb-sunny' },
+    { key: 'lunch', label: 'Lunch', icon: 'restaurant' },
+    { key: 'snack', label: 'Snack', icon: 'fastfood' },
+    { key: 'dinner', label: 'Dinner', icon: 'dinner-dining' },
+    { key: 'other', label: 'Other', icon: 'restaurant' },
+  ];
 
   return (
     <SafeAreaView style={styles.container} edges={['top']}>
@@ -236,6 +278,7 @@ export default function HomeScreen() {
             <Text style={styles.calorieNumber}>{stats.totalCalories}</Text>
             <Text style={styles.calorieLabel}>calories</Text>
             <Text style={styles.calorieRemaining}>{remainingCalories} remaining</Text>
+            <Text style={styles.calorieGoal}>Goal: {calorieGoal}</Text>
           </View>
 
           <View style={styles.progressBar}>
@@ -244,23 +287,23 @@ export default function HomeScreen() {
 
           <View style={styles.macrosRow}>
             <View style={styles.macroItem}>
-              <Text style={styles.macroValue}>{stats.totalProtein}g</Text>
+              <Text style={styles.macroValue}>{stats.totalProtein.toFixed(1)}g</Text>
               <Text style={styles.macroLabel}>Protein</Text>
             </View>
             <View style={styles.macroItem}>
-              <Text style={styles.macroValue}>{stats.totalCarbs}g</Text>
+              <Text style={styles.macroValue}>{stats.totalCarbs.toFixed(1)}g</Text>
               <Text style={styles.macroLabel}>Carbs</Text>
             </View>
             <View style={styles.macroItem}>
-              <Text style={styles.macroValue}>{stats.totalFat}g</Text>
+              <Text style={styles.macroValue}>{stats.totalFat.toFixed(1)}g</Text>
               <Text style={styles.macroLabel}>Fat</Text>
             </View>
           </View>
         </View>
 
-        {/* Entries List */}
+        {/* Entries List by Meal Type */}
         <View style={styles.entriesSection}>
-          <Text style={styles.sectionTitle}>Today's Meals</Text>
+          <Text style={styles.sectionTitle}>Today&apos;s Meals</Text>
           
           {entries.length === 0 ? (
             <View style={styles.emptyState}>
@@ -274,69 +317,85 @@ export default function HomeScreen() {
               <Text style={styles.emptySubtext}>Tap the camera button to scan your first meal</Text>
             </View>
           ) : (
-            entries.map((entry) => {
-              const entryCalories = entry.calories.toString();
-              const entryProtein = entry.protein ? `${entry.protein}g` : '0g';
-              const entryCarbs = entry.carbs ? `${entry.carbs}g` : '0g';
-              const entryFat = entry.fat ? `${entry.fat}g` : '0g';
-              
+            mealSections.map((section) => {
+              const sectionEntries = groupedEntries[section.key];
+              if (sectionEntries.length === 0) return null;
+
               return (
-                <View key={entry.id} style={styles.entryCard}>
-                  {entry.imageUrl && (
-                    <Image source={{ uri: entry.imageUrl }} style={styles.entryImage} />
-                  )}
-                  
-                  <View style={styles.entryHeader}>
-                    <View style={styles.entryInfo}>
-                      <View style={styles.entryNameRow}>
-                        <Text style={styles.entryName}>{entry.foodName}</Text>
-                        {entry.recognizedByAi && (
-                          <View style={styles.aiBadge}>
-                            <IconSymbol
-                              ios_icon_name="sparkles"
-                              android_material_icon_name="auto-awesome"
-                              size={12}
-                              color="#FFFFFF"
-                            />
-                            <Text style={styles.aiBadgeText}>AI</Text>
-                          </View>
+                <View key={section.key} style={styles.mealSection}>
+                  <View style={styles.mealSectionHeader}>
+                    <IconSymbol
+                      ios_icon_name={section.icon}
+                      android_material_icon_name={section.icon}
+                      size={20}
+                      color={colors.primary}
+                    />
+                    <Text style={styles.mealSectionTitle}>{section.label}</Text>
+                  </View>
+
+                  {sectionEntries.map((entry) => {
+                    const entryCalories = entry.calories.toString();
+                    const entryProtein = entry.protein ? `${entry.protein}g` : '0g';
+                    const entryCarbs = entry.carbs ? `${entry.carbs}g` : '0g';
+                    const entryFat = entry.fat ? `${entry.fat}g` : '0g';
+                    
+                    return (
+                      <View key={entry.id} style={styles.entryCard}>
+                        {entry.imageUrl && (
+                          <Image source={{ uri: entry.imageUrl }} style={styles.entryImage} />
                         )}
+                        
+                        <View style={styles.entryHeader}>
+                          <View style={styles.entryInfo}>
+                            <View style={styles.entryNameRow}>
+                              <Text style={styles.entryName}>{entry.foodName}</Text>
+                              {entry.recognizedByAi && (
+                                <View style={styles.aiBadge}>
+                                  <IconSymbol
+                                    ios_icon_name="sparkles"
+                                    android_material_icon_name="auto-awesome"
+                                    size={12}
+                                    color="#FFFFFF"
+                                  />
+                                  <Text style={styles.aiBadgeText}>AI</Text>
+                                </View>
+                              )}
+                            </View>
+                          </View>
+                          <TouchableOpacity
+                            onPress={() => confirmDelete(entry.id)}
+                            style={styles.deleteButton}
+                          >
+                            <IconSymbol
+                              ios_icon_name="trash"
+                              android_material_icon_name="delete"
+                              size={20}
+                              color={colors.error}
+                            />
+                          </TouchableOpacity>
+                        </View>
+                        
+                        <View style={styles.entryStats}>
+                          <View style={styles.entryStat}>
+                            <Text style={styles.entryStatValue}>{entryCalories}</Text>
+                            <Text style={styles.entryStatLabel}>cal</Text>
+                          </View>
+                          <View style={styles.entryStat}>
+                            <Text style={styles.entryStatValue}>{entryProtein}</Text>
+                            <Text style={styles.entryStatLabel}>protein</Text>
+                          </View>
+                          <View style={styles.entryStat}>
+                            <Text style={styles.entryStatValue}>{entryCarbs}</Text>
+                            <Text style={styles.entryStatLabel}>carbs</Text>
+                          </View>
+                          <View style={styles.entryStat}>
+                            <Text style={styles.entryStatValue}>{entryFat}</Text>
+                            <Text style={styles.entryStatLabel}>fat</Text>
+                          </View>
+                        </View>
                       </View>
-                      {entry.mealType && (
-                        <Text style={styles.entryMealType}>{entry.mealType}</Text>
-                      )}
-                    </View>
-                    <TouchableOpacity
-                      onPress={() => confirmDelete(entry.id)}
-                      style={styles.deleteButton}
-                    >
-                      <IconSymbol
-                        ios_icon_name="trash"
-                        android_material_icon_name="delete"
-                        size={20}
-                        color={colors.error}
-                      />
-                    </TouchableOpacity>
-                  </View>
-                  
-                  <View style={styles.entryStats}>
-                    <View style={styles.entryStat}>
-                      <Text style={styles.entryStatValue}>{entryCalories}</Text>
-                      <Text style={styles.entryStatLabel}>cal</Text>
-                    </View>
-                    <View style={styles.entryStat}>
-                      <Text style={styles.entryStatValue}>{entryProtein}</Text>
-                      <Text style={styles.entryStatLabel}>protein</Text>
-                    </View>
-                    <View style={styles.entryStat}>
-                      <Text style={styles.entryStatValue}>{entryCarbs}</Text>
-                      <Text style={styles.entryStatLabel}>carbs</Text>
-                    </View>
-                    <View style={styles.entryStat}>
-                      <Text style={styles.entryStatValue}>{entryFat}</Text>
-                      <Text style={styles.entryStatLabel}>fat</Text>
-                    </View>
-                  </View>
+                    );
+                  })}
                 </View>
               );
             })
@@ -362,116 +421,6 @@ export default function HomeScreen() {
           color="#FFFFFF"
         />
       </TouchableOpacity>
-
-      {/* Add Entry Modal */}
-      <Modal
-        visible={showAddModal}
-        animationType="slide"
-        transparent={true}
-        onRequestClose={() => setShowAddModal(false)}
-      >
-        <View style={styles.modalOverlay}>
-          <View style={styles.modalContent}>
-            <View style={styles.modalHeader}>
-              <Text style={styles.modalTitle}>Add Food Entry</Text>
-              <TouchableOpacity onPress={() => setShowAddModal(false)}>
-                <IconSymbol
-                  ios_icon_name="xmark"
-                  android_material_icon_name="close"
-                  size={24}
-                  color={colors.text}
-                />
-              </TouchableOpacity>
-            </View>
-
-            <ScrollView showsVerticalScrollIndicator={false}>
-              <View style={styles.formGroup}>
-                <Text style={styles.label}>Food Name *</Text>
-                <TextInput
-                  style={styles.input}
-                  value={foodName}
-                  onChangeText={setFoodName}
-                  placeholder="e.g., Chicken Breast"
-                  placeholderTextColor={colors.textSecondary}
-                />
-              </View>
-
-              <View style={styles.formGroup}>
-                <Text style={styles.label}>Calories *</Text>
-                <TextInput
-                  style={styles.input}
-                  value={calories}
-                  onChangeText={setCalories}
-                  placeholder="e.g., 250"
-                  placeholderTextColor={colors.textSecondary}
-                  keyboardType="numeric"
-                />
-              </View>
-
-              <View style={styles.formRow}>
-                <View style={styles.formGroupHalf}>
-                  <Text style={styles.label}>Protein (g)</Text>
-                  <TextInput
-                    style={styles.input}
-                    value={protein}
-                    onChangeText={setProtein}
-                    placeholder="0"
-                    placeholderTextColor={colors.textSecondary}
-                    keyboardType="numeric"
-                  />
-                </View>
-
-                <View style={styles.formGroupHalf}>
-                  <Text style={styles.label}>Carbs (g)</Text>
-                  <TextInput
-                    style={styles.input}
-                    value={carbs}
-                    onChangeText={setCarbs}
-                    placeholder="0"
-                    placeholderTextColor={colors.textSecondary}
-                    keyboardType="numeric"
-                  />
-                </View>
-              </View>
-
-              <View style={styles.formGroup}>
-                <Text style={styles.label}>Fat (g)</Text>
-                <TextInput
-                  style={styles.input}
-                  value={fat}
-                  onChangeText={setFat}
-                  placeholder="0"
-                  placeholderTextColor={colors.textSecondary}
-                  keyboardType="numeric"
-                />
-              </View>
-
-              <View style={styles.formGroup}>
-                <Text style={styles.label}>Meal Type</Text>
-                <TextInput
-                  style={styles.input}
-                  value={mealType}
-                  onChangeText={setMealType}
-                  placeholder="e.g., Breakfast, Lunch, Dinner, Snack"
-                  placeholderTextColor={colors.textSecondary}
-                />
-              </View>
-
-              <TouchableOpacity
-                style={[styles.submitButton, submitting && styles.submitButtonDisabled]}
-                onPress={handleAddEntry}
-                disabled={submitting}
-              >
-                {submitting ? (
-                  <ActivityIndicator color="#FFFFFF" />
-                ) : (
-                  <Text style={styles.submitButtonText}>Add Entry</Text>
-                )}
-              </TouchableOpacity>
-            </ScrollView>
-          </View>
-        </View>
-      </Modal>
 
       {/* Delete Confirmation Modal */}
       <Modal
@@ -606,6 +555,11 @@ const styles = StyleSheet.create({
     color: colors.textSecondary,
     marginTop: 8,
   },
+  calorieGoal: {
+    fontSize: 12,
+    color: colors.textSecondary,
+    marginTop: 4,
+  },
   progressBar: {
     height: 8,
     backgroundColor: colors.border,
@@ -660,6 +614,20 @@ const styles = StyleSheet.create({
     marginTop: 8,
     textAlign: 'center',
   },
+  mealSection: {
+    marginBottom: 24,
+  },
+  mealSectionHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    marginBottom: 12,
+  },
+  mealSectionTitle: {
+    fontSize: 18,
+    fontWeight: '600',
+    color: colors.text,
+  },
   entryCard: {
     backgroundColor: colors.card,
     borderRadius: 16,
@@ -712,11 +680,6 @@ const styles = StyleSheet.create({
     fontWeight: '700',
     color: '#FFFFFF',
   },
-  entryMealType: {
-    fontSize: 12,
-    color: colors.textSecondary,
-    textTransform: 'capitalize',
-  },
   deleteButton: {
     padding: 4,
   },
@@ -756,76 +719,15 @@ const styles = StyleSheet.create({
   modalOverlay: {
     flex: 1,
     backgroundColor: 'rgba(0, 0, 0, 0.5)',
-    justifyContent: 'flex-end',
-  },
-  modalContent: {
-    backgroundColor: colors.card,
-    borderTopLeftRadius: 24,
-    borderTopRightRadius: 24,
-    padding: 24,
-    maxHeight: '90%',
-  },
-  modalHeader: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
+    justifyContent: 'center',
     alignItems: 'center',
-    marginBottom: 24,
-  },
-  modalTitle: {
-    fontSize: 24,
-    fontWeight: '700',
-    color: colors.text,
-  },
-  formGroup: {
-    marginBottom: 20,
-  },
-  formRow: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    gap: 12,
-  },
-  formGroupHalf: {
-    flex: 1,
-    marginBottom: 20,
-  },
-  label: {
-    fontSize: 14,
-    fontWeight: '600',
-    color: colors.text,
-    marginBottom: 8,
-  },
-  input: {
-    backgroundColor: colors.background,
-    borderRadius: 12,
-    padding: 16,
-    fontSize: 16,
-    color: colors.text,
-    borderWidth: 1,
-    borderColor: colors.border,
-  },
-  submitButton: {
-    backgroundColor: colors.primary,
-    borderRadius: 12,
-    padding: 16,
-    alignItems: 'center',
-    marginTop: 8,
-    marginBottom: 20,
-  },
-  submitButtonDisabled: {
-    opacity: 0.6,
-  },
-  submitButtonText: {
-    color: '#FFFFFF',
-    fontSize: 16,
-    fontWeight: '600',
   },
   confirmModal: {
     backgroundColor: colors.card,
     borderRadius: 20,
     padding: 24,
     marginHorizontal: 20,
-    marginBottom: 'auto',
-    marginTop: 'auto',
+    width: '90%',
   },
   confirmTitle: {
     fontSize: 20,

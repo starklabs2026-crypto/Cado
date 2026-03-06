@@ -9,7 +9,6 @@ import {
   Image,
   Modal,
   ScrollView,
-  TextInput,
   Platform,
 } from 'react-native';
 import { Stack, useRouter } from 'expo-router';
@@ -18,8 +17,7 @@ import { IconSymbol } from '@/components/IconSymbol';
 import { colors } from '@/styles/commonStyles';
 import { useAuth } from '@/contexts/AuthContext';
 import * as Haptics from 'expo-haptics';
-import { getBearerToken, BACKEND_URL } from '@/utils/api';
-import { authenticatedPost } from '@/utils/api';
+import { getBearerToken, BACKEND_URL, authenticatedPost, authenticatedGet } from '@/utils/api';
 
 interface AnalysisResult {
   foodName: string;
@@ -31,6 +29,8 @@ interface AnalysisResult {
   confidence: string;
 }
 
+type MealType = 'breakfast' | 'lunch' | 'snack' | 'dinner';
+
 export default function CameraScreen() {
   const router = useRouter();
   const { user } = useAuth();
@@ -39,7 +39,8 @@ export default function CameraScreen() {
   const [analysisResult, setAnalysisResult] = useState<AnalysisResult | null>(null);
   const [showResultModal, setShowResultModal] = useState(false);
   const [saving, setSaving] = useState(false);
-  const [mealType, setMealType] = useState('');
+  const [mealType, setMealType] = useState<MealType>('breakfast');
+  const [usageInfo, setUsageInfo] = useState<{ can_scan: boolean; scans_remaining?: number; is_pro: boolean } | null>(null);
   const [errorModal, setErrorModal] = useState<{ visible: boolean; title: string; message: string }>({
     visible: false,
     title: '',
@@ -48,6 +49,34 @@ export default function CameraScreen() {
 
   const showError = (title: string, message: string) => {
     setErrorModal({ visible: true, title, message });
+  };
+
+  const checkUsageLimit = async () => {
+    try {
+      const data = await authenticatedGet<{ can_scan: boolean; reason?: string; scans_remaining?: number; is_pro: boolean }>('/api/usage/check-limit');
+      console.log('[API] Usage limit check:', data);
+      
+      if (!data.can_scan) {
+        showError('Scan Limit Reached', data.reason || 'You have reached your daily scan limit. Upgrade to Pro for unlimited scans.');
+        return false;
+      }
+      
+      setUsageInfo(data);
+      return true;
+    } catch (error: any) {
+      console.error('[API] Error checking usage limit:', error);
+      showError('Error', 'Failed to check usage limit. Please try again.');
+      return false;
+    }
+  };
+
+  const incrementUsage = async () => {
+    try {
+      await authenticatedPost('/api/usage/increment', {});
+      console.log('Usage incremented');
+    } catch (error) {
+      console.error('Error incrementing usage:', error);
+    }
   };
 
   const requestPermissions = async () => {
@@ -61,6 +90,10 @@ export default function CameraScreen() {
 
   const takePhoto = async () => {
     console.log('User tapped Take Photo button');
+    
+    const canScan = await checkUsageLimit();
+    if (!canScan) return;
+    
     const hasPermission = await requestPermissions();
     if (!hasPermission) return;
 
@@ -87,6 +120,10 @@ export default function CameraScreen() {
 
   const pickFromGallery = async () => {
     console.log('User tapped Pick from Gallery button');
+    
+    const canScan = await checkUsageLimit();
+    if (!canScan) return;
+    
     try {
       Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
       
@@ -132,14 +169,11 @@ export default function CameraScreen() {
       });
 
       console.log('[API] Sending multipart form data to backend');
-      console.log('[API] Image URI:', imageUri);
-      console.log('[API] File type:', fileType);
 
       const response = await fetch(`${BACKEND_URL}/api/food/analyze-image`, {
         method: 'POST',
         headers: {
           'Authorization': `Bearer ${token}`,
-          // Don't set Content-Type - let the browser/RN set it with the boundary
         },
         body: formData,
       });
@@ -154,6 +188,8 @@ export default function CameraScreen() {
 
       const result = await response.json();
       console.log('[API] Analysis result:', result);
+      
+      await incrementUsage();
       
       setAnalysisResult(result);
       setShowResultModal(true);
@@ -182,7 +218,7 @@ export default function CameraScreen() {
         carbs: analysisResult.carbs,
         fat: analysisResult.fat,
         imageUrl: analysisResult.imageUrl,
-        mealType: mealType.trim() || undefined,
+        mealType: mealType,
       };
 
       console.log('[API] Payload:', payload);
@@ -207,7 +243,7 @@ export default function CameraScreen() {
     setSelectedImage(null);
     setAnalysisResult(null);
     setShowResultModal(false);
-    setMealType('');
+    setMealType('breakfast');
   };
 
   const confidenceColor = analysisResult?.confidence === 'high' 
@@ -217,6 +253,13 @@ export default function CameraScreen() {
     : colors.error;
 
   const confidenceText = analysisResult?.confidence || 'unknown';
+
+  const mealTypeOptions: { value: MealType; label: string; icon: string }[] = [
+    { value: 'breakfast', label: 'Breakfast', icon: 'wb-sunny' },
+    { value: 'lunch', label: 'Lunch', icon: 'restaurant' },
+    { value: 'snack', label: 'Snack', icon: 'fastfood' },
+    { value: 'dinner', label: 'Dinner', icon: 'dinner-dining' },
+  ];
 
   return (
     <View style={styles.container}>
@@ -247,6 +290,14 @@ export default function CameraScreen() {
           <Text style={styles.emptySubtitle}>
             Take a photo of your meal and let AI automatically calculate the nutrition values
           </Text>
+
+          {usageInfo && !usageInfo.is_pro && (
+            <View style={styles.usageInfo}>
+              <Text style={styles.usageText}>
+                {usageInfo.scans_remaining !== undefined ? `${usageInfo.scans_remaining} scans remaining today` : 'Free: 3 scans per day'}
+              </Text>
+            </View>
+          )}
 
           <View style={styles.buttonContainer}>
             <TouchableOpacity style={styles.primaryButton} onPress={takePhoto}>
@@ -372,14 +423,37 @@ export default function CameraScreen() {
                   </View>
 
                   <View style={styles.formGroup}>
-                    <Text style={styles.label}>Meal Type (Optional)</Text>
-                    <TextInput
-                      style={styles.input}
-                      value={mealType}
-                      onChangeText={setMealType}
-                      placeholder="e.g., Breakfast, Lunch, Dinner, Snack"
-                      placeholderTextColor={colors.textSecondary}
-                    />
+                    <Text style={styles.label}>Meal Type</Text>
+                    <View style={styles.mealTypeGrid}>
+                      {mealTypeOptions.map((option) => (
+                        <TouchableOpacity
+                          key={option.value}
+                          style={[
+                            styles.mealTypeButton,
+                            mealType === option.value && styles.mealTypeButtonSelected,
+                          ]}
+                          onPress={() => {
+                            setMealType(option.value);
+                            Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                          }}
+                        >
+                          <IconSymbol
+                            ios_icon_name={option.icon}
+                            android_material_icon_name={option.icon}
+                            size={24}
+                            color={mealType === option.value ? colors.primary : colors.textSecondary}
+                          />
+                          <Text
+                            style={[
+                              styles.mealTypeText,
+                              mealType === option.value && styles.mealTypeTextSelected,
+                            ]}
+                          >
+                            {option.label}
+                          </Text>
+                        </TouchableOpacity>
+                      ))}
+                    </View>
                   </View>
 
                   <View style={styles.actionButtons}>
@@ -470,7 +544,19 @@ const styles = StyleSheet.create({
     color: colors.textSecondary,
     textAlign: 'center',
     lineHeight: 24,
-    marginBottom: 40,
+    marginBottom: 24,
+  },
+  usageInfo: {
+    backgroundColor: colors.card,
+    borderRadius: 12,
+    paddingVertical: 8,
+    paddingHorizontal: 16,
+    marginBottom: 16,
+  },
+  usageText: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: colors.primary,
   },
   buttonContainer: {
     width: '100%',
@@ -683,16 +769,35 @@ const styles = StyleSheet.create({
     fontSize: 14,
     fontWeight: '600',
     color: colors.text,
-    marginBottom: 8,
+    marginBottom: 12,
   },
-  input: {
+  mealTypeGrid: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 12,
+  },
+  mealTypeButton: {
+    flex: 1,
+    minWidth: '45%',
     backgroundColor: colors.background,
     borderRadius: 12,
     padding: 16,
-    fontSize: 16,
-    color: colors.text,
-    borderWidth: 1,
+    alignItems: 'center',
+    borderWidth: 2,
     borderColor: colors.border,
+  },
+  mealTypeButtonSelected: {
+    borderColor: colors.primary,
+    backgroundColor: `${colors.primary}15`,
+  },
+  mealTypeText: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: colors.textSecondary,
+    marginTop: 8,
+  },
+  mealTypeTextSelected: {
+    color: colors.primary,
   },
   actionButtons: {
     flexDirection: 'row',

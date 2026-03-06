@@ -18,6 +18,12 @@ export default function TabLayout() {
       android_material_icon_name: 'home' as const,
     },
     {
+      route: '/(tabs)/history',
+      label: 'History',
+      ios_icon_name: 'calendar',
+      android_material_icon_name: 'calendar-today' as const,
+    },
+    {
       route: '/(tabs)/profile',
       label: 'Profile',
       ios_icon_name: 'person.fill',
@@ -29,6 +35,7 @@ export default function TabLayout() {
     <>
       <Stack screenOptions={{ headerShown: false }}>
         <Stack.Screen name="(home)" />
+        <Stack.Screen name="history" />
         <Stack.Screen name="profile" />
       </Stack>
       <FloatingTabBar tabs={tabs} />
