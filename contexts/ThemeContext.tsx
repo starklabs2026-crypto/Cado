@@ -5,10 +5,27 @@ import { lightColors, darkColors } from '@/styles/commonStyles';
 
 type Theme = 'light' | 'dark';
 
+export interface ThemeColors {
+  background: string;
+  card: string;
+  text: string;
+  textSecondary: string;
+  primary: string;
+  secondary: string;
+  accent: string;
+  highlight: string;
+  border: string;
+  error: string;
+  success: string;
+  protein: string;
+  carbs: string;
+  fat: string;
+}
+
 interface ThemeContextType {
   theme: Theme;
-  colors: typeof lightColors;
-  isDarkMode: boolean;
+  colors: ThemeColors;
+  isDark: boolean;
   toggleTheme: () => void;
 }
 
@@ -52,8 +69,8 @@ export function ThemeProvider({ children }: { children: ReactNode }) {
     }
   };
 
-  const isDarkMode = theme === 'dark';
-  const colors = isDarkMode ? darkColors : lightColors;
+  const isDark = theme === 'dark';
+  const colors = isDark ? darkColors : lightColors;
 
   // Don't render children until theme is loaded to prevent flash
   if (isLoading) {
@@ -61,13 +78,13 @@ export function ThemeProvider({ children }: { children: ReactNode }) {
   }
 
   return (
-    <ThemeContext.Provider value={{ theme, colors, isDarkMode, toggleTheme }}>
+    <ThemeContext.Provider value={{ theme, colors, isDark, toggleTheme }}>
       {children}
     </ThemeContext.Provider>
   );
 }
 
-export function useTheme() {
+export function useTheme(): ThemeContextType {
   const context = useContext(ThemeContext);
   if (context === undefined) {
     throw new Error('useTheme must be used within ThemeProvider');
