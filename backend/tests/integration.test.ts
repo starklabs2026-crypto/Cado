@@ -1076,8 +1076,8 @@ describe("API Integration Tests", () => {
         method: "POST",
       }
     );
-    // Should succeed if group is public and user isn't already a member, or return 403/409 if private/already member
-    await expectStatus(res, 200, 403, 409);
+    // Should succeed if group is public and user isn't already a member, or return 403 if private/already member
+    await expectStatus(res, 200, 403);
   });
 
   test("Join non-existent group returns 404", async () => {

@@ -50,6 +50,13 @@
       "when": 1772831301396,
       "tag": "20260306210821_ancient_jackpot",
       "breakpoints": true
+    },
+    {
+      "idx": 7,
+      "version": "7",
+      "when": 1772863594439,
+      "tag": "20260307060634_parched_gravity",
+      "breakpoints": true
     }
   ]
 }
