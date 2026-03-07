@@ -73,23 +73,33 @@ const nutritionSchema = z.object({
   confidence: z.enum(['high', 'medium', 'low']).describe('Confidence level: high=certain identification, medium=type clear, low=unclear/difficult to estimate'),
 });
 
-// Helper function for fuzzy search
+// Helper function for fuzzy search with case-insensitive matching
 function calculateRelevance(query: string, foodName: string, aliases: string[] = []): number {
-  const lowerQuery = query.toLowerCase();
-  const lowerName = foodName.toLowerCase();
+  const lowerQuery = query.toLowerCase().trim();
+  const lowerName = foodName.toLowerCase().trim();
 
   // Exact match = 3
   if (lowerName === lowerQuery) return 3;
+
   // Exact match in aliases = 2.9
-  if (aliases?.some(a => a.toLowerCase() === lowerQuery)) return 2.9;
+  if (aliases?.some(a => a && a.toLowerCase().trim() === lowerQuery)) return 2.9;
+
   // Starts with = 2
   if (lowerName.startsWith(lowerQuery)) return 2;
+
   // Alias starts with = 1.9
-  if (aliases?.some(a => a.toLowerCase().startsWith(lowerQuery))) return 1.9;
+  if (aliases?.some(a => a && a.toLowerCase().trim().startsWith(lowerQuery))) return 1.9;
+
   // Contains = 1
   if (lowerName.includes(lowerQuery)) return 1;
+
   // Alias contains = 0.9
-  if (aliases?.some(a => a.toLowerCase().includes(lowerQuery))) return 0.9;
+  if (aliases?.some(a => a && a.toLowerCase().includes(lowerQuery))) return 0.9;
+
+  // Word boundary match (e.g., "ice" in "vanilla ice cream") = 0.8
+  const words = lowerName.split(/\s+/);
+  if (words.some(word => word.startsWith(lowerQuery))) return 0.8;
+
   return 0;
 }
 
@@ -142,29 +152,49 @@ export function registerFoodEntryRoutes(app: App) {
       const { query, category } = request.body;
       app.logger.info({ userId: session.user.id, query, category }, 'Searching food database');
 
-      // Build query conditions
-      const conditions = [
-        or(
-          ilike(schema.foodDatabase.name, `%${query}%`)
-        ),
-      ];
+      // Normalize query for case-insensitive searching
+      const lowerQuery = query.toLowerCase();
 
-      if (category) {
-        conditions.push(eq(schema.foodDatabase.category, category));
-      }
+      // Build database query - fetch all foods in category if specified, otherwise all
+      const dbQuery = category
+        ? app.db
+            .select()
+            .from(schema.foodDatabase)
+            .where(eq(schema.foodDatabase.category, category))
+        : app.db
+            .select()
+            .from(schema.foodDatabase);
 
-      // Query database
-      const results = await app.db
-        .select()
-        .from(schema.foodDatabase)
-        .where(and(...conditions));
+      const allFoods = await dbQuery;
 
-      // Score results by relevance and sort
-      const scored = results
-        .map((item) => ({
-          item,
-          relevance: calculateRelevance(query, item.name, item.aliases || []),
-        }))
+      // Filter and score results by searching in both name AND aliases
+      const scored = allFoods
+        .map((item) => {
+          const nameRelevance = calculateRelevance(query, item.name, item.aliases || []);
+
+          // Also check if query matches any alias
+          let aliasMatch = false;
+          if (item.aliases && item.aliases.length > 0) {
+            aliasMatch = item.aliases.some(alias =>
+              alias.toLowerCase().includes(lowerQuery)
+            );
+          }
+
+          // Give bonus to exact alias matches
+          let finalRelevance = nameRelevance;
+          if (aliasMatch && nameRelevance === 0) {
+            // If no name match but alias matches, give it a base relevance
+            const bestAliasRelevance = Math.max(
+              ...item.aliases.map(a => calculateRelevance(query, a))
+            );
+            finalRelevance = bestAliasRelevance * 0.95; // Slightly lower than name match
+          }
+
+          return {
+            item,
+            relevance: finalRelevance,
+          };
+        })
         .filter((r) => r.relevance > 0)
         .sort((a, b) => b.relevance - a.relevance);
 
@@ -179,7 +209,7 @@ export function registerFoodEntryRoutes(app: App) {
         servingSize: r.item.servingSizeG,
       }));
 
-      app.logger.info({ userId: session.user.id, resultCount: response.length }, 'Food search completed');
+      app.logger.info({ userId: session.user.id, resultCount: response.length, query }, 'Food search completed');
       return response;
     }
   );
