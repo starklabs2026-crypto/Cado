@@ -1,26 +1,6 @@
-/**
- * Error Boundary Component Template
- *
- * Catches JavaScript errors anywhere in the child component tree,
- * logs those errors, and displays a fallback UI.
- *
- * Usage:
- * ```tsx
- * <ErrorBoundary>
- *   <App />
- * </ErrorBoundary>
- * ```
- *
- * Or wrap specific screens:
- * ```tsx
- * <ErrorBoundary fallback={<CustomErrorScreen />}>
- *   <ComplexFeature />
- * </ErrorBoundary>
- * ```
- */
 
 import React, { Component, ReactNode } from "react";
-import { View, Text, TouchableOpacity, StyleSheet, ScrollView } from "react-native";
+import { View, Text, TouchableOpacity, StyleSheet, ScrollView, Platform } from "react-native";
 
 interface Props {
   children: ReactNode;
@@ -53,16 +33,13 @@ export class ErrorBoundary extends Component<Props, State> {
   }
 
   componentDidCatch(error: Error, errorInfo: React.ErrorInfo) {
-    // Log error to console
     console.error("Error caught by boundary:", error, errorInfo);
 
-    // Update state with error info
     this.setState({
       error,
       errorInfo,
     });
 
-    // Call custom error handler if provided
     this.props.onError?.(error, errorInfo);
   }
 
@@ -76,17 +53,26 @@ export class ErrorBoundary extends Component<Props, State> {
 
   render() {
     if (this.state.hasError) {
-      // Custom fallback UI
       if (this.props.fallback) {
         return this.props.fallback;
       }
 
-      // Default fallback UI
+      const errorMessage = this.state.error?.message || "Unknown error";
+      const isMetroError = errorMessage.includes("Packager") || errorMessage.includes("Metro");
+      const isNetworkError = errorMessage.includes("Network") || errorMessage.includes("connect");
+
       return (
         <View style={styles.container}>
-          <Text style={styles.title}>Oops! Something went wrong</Text>
+          <Text style={styles.title}>
+            {isMetroError ? "Development Server Error" : "Oops! Something went wrong"}
+          </Text>
+          
           <Text style={styles.message}>
-            We're sorry for the inconvenience. The app encountered an error.
+            {isMetroError 
+              ? "The development server is not responding. Please ensure Metro bundler is running and try again."
+              : isNetworkError
+              ? "Unable to connect to the server. Please check your internet connection and try again."
+              : "We're sorry for the inconvenience. The app encountered an error."}
           </Text>
 
           {__DEV__ && this.state.error && (
@@ -106,6 +92,12 @@ export class ErrorBoundary extends Component<Props, State> {
           <TouchableOpacity style={styles.button} onPress={this.handleReset}>
             <Text style={styles.buttonText}>Try Again</Text>
           </TouchableOpacity>
+
+          {isMetroError && __DEV__ && (
+            <Text style={styles.hint}>
+              Tip: Restart the Metro bundler and reload the app
+            </Text>
+          )}
         </View>
       );
     }
@@ -120,27 +112,31 @@ const styles = StyleSheet.create({
     justifyContent: "center",
     alignItems: "center",
     padding: 24,
-    backgroundColor: "#fff",
+    backgroundColor: "#000",
   },
   title: {
     fontSize: 24,
     fontWeight: "bold",
     marginBottom: 16,
-    color: "#000",
+    color: "#fff",
+    textAlign: "center",
   },
   message: {
     fontSize: 16,
     textAlign: "center",
-    color: "#666",
+    color: "#ccc",
     marginBottom: 24,
+    lineHeight: 24,
   },
   errorDetails: {
     maxHeight: 200,
     width: "100%",
     padding: 16,
-    backgroundColor: "#f5f5f5",
+    backgroundColor: "#1a1a1a",
     borderRadius: 8,
     marginBottom: 24,
+    borderWidth: 1,
+    borderColor: "#333",
   },
   errorTitle: {
     fontSize: 14,
@@ -150,17 +146,17 @@ const styles = StyleSheet.create({
   },
   errorText: {
     fontSize: 12,
-    color: "#333",
-    fontFamily: "monospace",
+    color: "#fff",
+    fontFamily: Platform.OS === "ios" ? "Courier" : "monospace",
     marginBottom: 8,
   },
   errorStack: {
     fontSize: 10,
-    color: "#666",
-    fontFamily: "monospace",
+    color: "#999",
+    fontFamily: Platform.OS === "ios" ? "Courier" : "monospace",
   },
   button: {
-    backgroundColor: "#007AFF",
+    backgroundColor: "#10B981",
     paddingHorizontal: 32,
     paddingVertical: 12,
     borderRadius: 8,
@@ -169,5 +165,12 @@ const styles = StyleSheet.create({
     color: "#fff",
     fontSize: 16,
     fontWeight: "600",
+  },
+  hint: {
+    marginTop: 16,
+    fontSize: 14,
+    color: "#888",
+    textAlign: "center",
+    fontStyle: "italic",
   },
 });

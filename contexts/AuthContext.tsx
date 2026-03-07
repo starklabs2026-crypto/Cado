@@ -78,18 +78,14 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     fetchUser();
 
-    // Listen for deep links (e.g. from social auth redirects)
     const subscription = Linking.addEventListener("url", (event) => {
       console.log("Deep link received, refreshing user session");
-      // Allow time for the client to process the token if needed
     });
 
-    // POLLING: Refresh session every 5 minutes to keep SecureStore token in sync
-    // This prevents 401 errors when the session token rotates
     const intervalId = setInterval(() => {
       console.log("Auto-refreshing user session to sync token...");
       fetchUser();
-    }, 5 * 60 * 1000); // 5 minutes
+    }, 5 * 60 * 1000);
 
     return () => {
       subscription.remove();
@@ -103,7 +99,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       const session = await authClient.getSession();
       if (session?.data?.user) {
         setUser(session.data.user as User);
-        // Sync token to SecureStore for utils/api.ts
         if (session.data.session?.token) {
           await setBearerToken(session.data.session.token);
         }
@@ -114,12 +109,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     } catch (error) {
       console.error("Failed to fetch user:", error);
       
-      // On iOS, if we get an SSL error, log it but don't crash
       if (Platform.OS === "ios" && error instanceof Error) {
         if (error.message.includes("525") || error.message.includes("SSL") || error.message.includes("Network request failed") || error.message.includes("certificate")) {
-          console.error("[iOS] SSL/Network error detected. This may be due to certificate issues in Expo Go.");
-          console.error("[iOS] Error details:", error.message);
-          // Don't set user to null immediately - keep existing session if we have one
+          console.error("[iOS] Network/SSL error detected. Keeping existing session if available.");
           if (!user) {
             setUser(null);
           }
@@ -150,7 +142,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         email,
         password,
         name,
-        // Ensure name is passed in header or logic if required, usually passed in body
       });
       await fetchUser();
     } catch (error) {
@@ -166,18 +157,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         await setBearerToken(token);
         await fetchUser();
       } else {
-        // Native: Use expo-linking to generate a proper deep link
         const callbackURL = Linking.createURL("/");
         await authClient.signIn.social({
           provider,
           callbackURL,
         });
-        // Note: The redirect will reload the app or be handled by deep linking.
-        // fetchUser will be called on mount or via event listener if needed.
-        // For simple flow, we might need to listen to URL events.
-        // But better-auth expo client handles the redirect and session storage?
-        // We typically need to wait or rely on fetchUser on next app load.
-        // For now, call fetchUser just in case.
         await fetchUser();
       }
     } catch (error) {
@@ -194,7 +178,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     try {
       console.log("[Auth] Signing in as guest via POST /api/guest");
       
-      // Call the guest endpoint - returns { user: { id, email, name, isGuest, onboarding_completed, is_pro }, token }
       const data = await apiPost<{
         user: { id: string; email: string; name: string; isGuest: boolean; onboarding_completed: boolean; is_pro: boolean };
         token: string;
@@ -202,13 +185,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
       console.log("[Auth] Guest sign in response:", data);
 
-      // Store the token so authenticated API calls work
       if (data.token) {
         await setBearerToken(data.token);
         console.log("[Auth] Guest bearer token stored");
       }
 
-      // Set the guest user in state
       if (data.user) {
         setUser({
           id: data.user.id,
@@ -221,11 +202,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     } catch (error) {
       console.error("Guest sign in failed:", error);
       
-      // Provide user-friendly error message
       if (error instanceof Error) {
-        if (error.message.includes("404")) {
-          throw new Error("Guest sign-in is not available yet. Please try again in a moment or sign in with email/social login.");
-        } else if (error.message.includes("Network request failed") || error.message.includes("SSL")) {
+        if (error.message.includes("not available yet")) {
+          throw new Error("Guest sign-in is temporarily unavailable. Please try again in a moment.");
+        } else if (error.message.includes("Network request failed") || error.message.includes("SSL") || error.message.includes("connect")) {
           throw new Error("Unable to connect to server. Please check your internet connection and try again.");
         }
       }
@@ -240,7 +220,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     } catch (error) {
       console.error("Sign out failed (API):", error);
     } finally {
-       // Always clear local state
        setUser(null);
        await clearAuthTokens();
     }

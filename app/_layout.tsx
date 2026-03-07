@@ -1,5 +1,5 @@
 
-import { useColorScheme, View, ActivityIndicator, Linking, Platform, Text, StyleSheet } from "react-native";
+import { useColorScheme, View, ActivityIndicator, Linking, Platform, Text, StyleSheet, TouchableOpacity } from "react-native";
 import { useFonts } from "expo-font";
 import { SystemBars } from "react-native-edge-to-edge";
 import { GestureHandlerRootView } from "react-native-gesture-handler";
@@ -16,6 +16,7 @@ import React, { useEffect, useCallback, useState } from "react";
 import { WidgetProvider } from "@/contexts/WidgetContext";
 import { AuthProvider, useAuth } from "@/contexts/AuthContext";
 import { Stack, useRouter, useSegments } from "expo-router";
+import { ErrorBoundary } from "@/components/ErrorBoundary";
 
 SplashScreen.preventAutoHideAsync();
 
@@ -42,13 +43,10 @@ function AuthGate({ children }: { children: React.ReactNode }) {
     handleAuthRedirect();
   }, [handleAuthRedirect]);
 
-  // Handle deep links for group invites
   useEffect(() => {
     const handleDeepLink = (event: { url: string }) => {
       console.log('[DeepLink] Received deep link:', event.url);
       
-      // Parse the URL to extract the invite token
-      // Format: iwanttobuildaca://group-invite/{token}
       const url = event.url;
       const groupInviteMatch = url.match(/group-invite\/([^/?]+)/);
       
@@ -56,18 +54,14 @@ function AuthGate({ children }: { children: React.ReactNode }) {
         const token = groupInviteMatch[1];
         console.log('[DeepLink] Extracted invite token:', token);
         
-        // Navigate to the join-group screen
         if (user) {
           router.push(`/join-group/${token}`);
         } else {
           console.log('[DeepLink] User not authenticated, will redirect after login');
-          // Store the token to redirect after login
-          // For now, just log it
         }
       }
     };
 
-    // Handle initial URL (app opened via deep link)
     Linking.getInitialURL().then((url) => {
       if (url) {
         console.log('[DeepLink] Initial URL:', url);
@@ -75,7 +69,6 @@ function AuthGate({ children }: { children: React.ReactNode }) {
       }
     });
 
-    // Handle deep links while app is running
     const subscription = Linking.addEventListener('url', handleDeepLink);
 
     return () => {
@@ -85,8 +78,9 @@ function AuthGate({ children }: { children: React.ReactNode }) {
 
   if (loading) {
     return (
-      <View style={{ flex: 1, justifyContent: "center", alignItems: "center" }}>
+      <View style={{ flex: 1, justifyContent: "center", alignItems: "center", backgroundColor: "#000" }}>
         <ActivityIndicator size="large" color="#10B981" />
+        <Text style={{ color: "#fff", marginTop: 16, fontSize: 16 }}>Loading...</Text>
       </View>
     );
   }
@@ -94,13 +88,34 @@ function AuthGate({ children }: { children: React.ReactNode }) {
   return <>{children}</>;
 }
 
+function NetworkStatusMonitor() {
+  const { isConnected, isInternetReachable } = useNetworkState();
+  const [showWarning, setShowWarning] = useState(false);
+
+  useEffect(() => {
+    if (isConnected === false || isInternetReachable === false) {
+      setShowWarning(true);
+    } else {
+      setShowWarning(false);
+    }
+  }, [isConnected, isInternetReachable]);
+
+  if (!showWarning) return null;
+
+  return (
+    <View style={styles.networkWarning}>
+      <Text style={styles.networkWarningText}>
+        ⚠️ No internet connection. Some features may not work.
+      </Text>
+    </View>
+  );
+}
+
 export default function RootLayout() {
-  const { isConnected } = useNetworkState();
   const colorScheme = useColorScheme();
   const [loaded] = useFonts({
     SpaceMono: require("../assets/fonts/SpaceMono-Regular.ttf"),
   });
-  const [showNetworkWarning, setShowNetworkWarning] = useState(false);
 
   useEffect(() => {
     if (loaded) {
@@ -108,86 +123,56 @@ export default function RootLayout() {
     }
   }, [loaded]);
 
-  // Show network warning on iOS if not connected
-  useEffect(() => {
-    if (Platform.OS === "ios" && isConnected === false) {
-      setShowNetworkWarning(true);
-    } else {
-      setShowNetworkWarning(false);
-    }
-  }, [isConnected]);
-
   if (!loaded) {
     return null;
   }
 
-  // Show network warning for iOS
-  if (showNetworkWarning && Platform.OS === "ios") {
-    return (
-      <View style={styles.errorContainer}>
-        <Text style={styles.errorTitle}>No Internet Connection</Text>
-        <Text style={styles.errorMessage}>
-          Please check your internet connection and try again.
-        </Text>
-        <Text style={styles.errorHint}>
-          If you're using Expo Go, make sure you're connected to the same network as your development machine.
-        </Text>
-      </View>
-    );
-  }
-
   return (
-    <GestureHandlerRootView style={{ flex: 1 }}>
-      <SystemBars style="auto" />
-      <ThemeProvider value={colorScheme === "dark" ? DarkTheme : DefaultTheme}>
-        <AuthProvider>
-          <WidgetProvider>
-            <AuthGate>
-              <Stack>
-                <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
-                <Stack.Screen name="auth" options={{ headerShown: false }} />
-                <Stack.Screen name="auth-popup" options={{ headerShown: false }} />
-                <Stack.Screen name="auth-callback" options={{ headerShown: false }} />
-                <Stack.Screen name="onboarding" options={{ headerShown: false, gestureEnabled: false }} />
-                <Stack.Screen name="camera" options={{ headerShown: true, title: 'Scan Food' }} />
-                <Stack.Screen name="create-group" options={{ headerShown: true, title: 'Create Private Group' }} />
-                <Stack.Screen name="notifications" options={{ headerShown: true, title: 'Notifications' }} />
-                <Stack.Screen name="join-group/[token]" options={{ headerShown: true, title: 'Join Group' }} />
-                <Stack.Screen name="+not-found" />
-              </Stack>
-            </AuthGate>
-            <StatusBar style="auto" />
-          </WidgetProvider>
-        </AuthProvider>
-      </ThemeProvider>
-    </GestureHandlerRootView>
+    <ErrorBoundary>
+      <GestureHandlerRootView style={{ flex: 1 }}>
+        <SystemBars style="auto" />
+        <ThemeProvider value={colorScheme === "dark" ? DarkTheme : DefaultTheme}>
+          <AuthProvider>
+            <WidgetProvider>
+              <NetworkStatusMonitor />
+              <AuthGate>
+                <Stack>
+                  <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
+                  <Stack.Screen name="auth" options={{ headerShown: false }} />
+                  <Stack.Screen name="auth-popup" options={{ headerShown: false }} />
+                  <Stack.Screen name="auth-callback" options={{ headerShown: false }} />
+                  <Stack.Screen name="onboarding" options={{ headerShown: false, gestureEnabled: false }} />
+                  <Stack.Screen name="camera" options={{ headerShown: true, title: 'Scan Food' }} />
+                  <Stack.Screen name="create-group" options={{ headerShown: true, title: 'Create Private Group' }} />
+                  <Stack.Screen name="notifications" options={{ headerShown: true, title: 'Notifications' }} />
+                  <Stack.Screen name="join-group/[token]" options={{ headerShown: true, title: 'Join Group' }} />
+                  <Stack.Screen name="+not-found" />
+                </Stack>
+              </AuthGate>
+              <StatusBar style="auto" />
+            </WidgetProvider>
+          </AuthProvider>
+        </ThemeProvider>
+      </GestureHandlerRootView>
+    </ErrorBoundary>
   );
 }
 
 const styles = StyleSheet.create({
-  errorContainer: {
-    flex: 1,
-    justifyContent: "center",
-    alignItems: "center",
-    padding: 20,
-    backgroundColor: "#000",
+  networkWarning: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    backgroundColor: '#FF9500',
+    padding: 12,
+    zIndex: 9999,
+    paddingTop: Platform.OS === 'ios' ? 50 : 12,
   },
-  errorTitle: {
-    fontSize: 24,
-    fontWeight: "bold",
-    color: "#fff",
-    marginBottom: 16,
-  },
-  errorMessage: {
-    fontSize: 16,
-    color: "#ccc",
-    textAlign: "center",
-    marginBottom: 12,
-  },
-  errorHint: {
+  networkWarningText: {
+    color: '#fff',
+    textAlign: 'center',
     fontSize: 14,
-    color: "#888",
-    textAlign: "center",
-    fontStyle: "italic",
+    fontWeight: '600',
   },
 });

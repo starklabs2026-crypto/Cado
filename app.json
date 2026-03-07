@@ -1,3 +1,4 @@
+
 {
   "expo": {
     "name": "i-want-to-build-a-ca",
@@ -20,22 +21,26 @@
         "NSAppTransportSecurity": {
           "NSAllowsArbitraryLoads": true,
           "NSAllowsArbitraryLoadsInWebContent": true,
+          "NSAllowsLocalNetworking": true,
           "NSExceptionDomains": {
             "specular.dev": {
               "NSExceptionAllowsInsecureHTTPLoads": true,
               "NSIncludesSubdomains": true,
               "NSExceptionRequiresForwardSecrecy": false,
-              "NSExceptionMinimumTLSVersion": "TLSv1.0"
+              "NSExceptionMinimumTLSVersion": "TLSv1.0",
+              "NSThirdPartyExceptionAllowsInsecureHTTPLoads": true
             },
             "app.specular.dev": {
               "NSExceptionAllowsInsecureHTTPLoads": true,
               "NSIncludesSubdomains": true,
               "NSExceptionRequiresForwardSecrecy": false,
-              "NSExceptionMinimumTLSVersion": "TLSv1.0"
+              "NSExceptionMinimumTLSVersion": "TLSv1.0",
+              "NSThirdPartyExceptionAllowsInsecureHTTPLoads": true
             },
             "localhost": {
               "NSExceptionAllowsInsecureHTTPLoads": true,
-              "NSIncludesSubdomains": true
+              "NSIncludesSubdomains": true,
+              "NSThirdPartyExceptionAllowsInsecureHTTPLoads": true
             }
           }
         },
@@ -49,7 +54,14 @@
         "backgroundColor": "#000000"
       },
       "edgeToEdgeEnabled": true,
-      "package": "com.placeholder.app"
+      "package": "com.placeholder.app",
+      "permissions": [
+        "INTERNET",
+        "ACCESS_NETWORK_STATE",
+        "CAMERA",
+        "READ_EXTERNAL_STORAGE",
+        "WRITE_EXTERNAL_STORAGE"
+      ]
     },
     "web": {
       "favicon": "./assets/images/final_quest_240x240.png",

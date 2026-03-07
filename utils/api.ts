@@ -4,26 +4,12 @@ import { Platform } from "react-native";
 import * as SecureStore from "expo-secure-store";
 import { BEARER_TOKEN_KEY } from "@/lib/auth";
 
-/**
- * Backend URL is configured in app.json under expo.extra.backendUrl
- * It is set automatically when the backend is deployed
- */
 export const BACKEND_URL = Constants.expoConfig?.extra?.backendUrl || "";
 
-/**
- * Check if backend is properly configured
- */
 export const isBackendConfigured = (): boolean => {
   return !!BACKEND_URL && BACKEND_URL.length > 0;
 };
 
-/**
- * Get bearer token from platform-specific storage
- * Web: localStorage
- * Native: SecureStore
- *
- * @returns Bearer token or null if not found
- */
 export const getBearerToken = async (): Promise<string | null> => {
   try {
     if (Platform.OS === "web") {
@@ -37,24 +23,22 @@ export const getBearerToken = async (): Promise<string | null> => {
   }
 };
 
-/**
- * Generic API call helper with error handling
- *
- * @param endpoint - API endpoint path (e.g., '/users', '/auth/login')
- * @param options - Fetch options (method, headers, body, etc.)
- * @returns Parsed JSON response
- * @throws Error if backend is not configured or request fails
- */
+const MAX_RETRIES = 3;
+const RETRY_DELAY = 1000;
+
+const delay = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
+
 export const apiCall = async <T = any>(
   endpoint: string,
-  options?: RequestInit
+  options?: RequestInit,
+  retryCount = 0
 ): Promise<T> => {
   if (!isBackendConfigured()) {
     throw new Error("Backend URL not configured. Please rebuild the app.");
   }
 
   const url = `${BACKEND_URL}${endpoint}`;
-  console.log("[API] Calling:", url, options?.method || "GET");
+  console.log(`[API] Calling: ${url} ${options?.method || "GET"} (attempt ${retryCount + 1}/${MAX_RETRIES + 1})`);
 
   try {
     const isFormData = options?.body instanceof FormData;
@@ -62,19 +46,11 @@ export const apiCall = async <T = any>(
     const fetchOptions: RequestInit = {
       ...options,
       headers: {
-        // Don't set Content-Type for FormData - browser will set it with boundary
         ...(isFormData ? {} : { "Content-Type": "application/json" }),
         ...options?.headers,
       },
     };
 
-    console.log("[API] Fetch options:", JSON.stringify({
-      method: fetchOptions.method,
-      headers: fetchOptions.headers,
-      hasBody: !!fetchOptions.body
-    }));
-
-    // Always send the token if we have it (needed for cross-domain/iframe support)
     const token = await getBearerToken();
     if (token) {
       fetchOptions.headers = {
@@ -95,19 +71,23 @@ export const apiCall = async <T = any>(
       
       console.error("[API] Error response:", response.status, errorText);
       
-      // Provide user-friendly error messages
       if (response.status === 404) {
-        throw new Error(`API error: 404 - Endpoint not found. The requested feature may not be available yet.`);
+        throw new Error(`The requested feature is not available yet. Please try again later.`);
       } else if (response.status === 401) {
         throw new Error(`Authentication required. Please sign in again.`);
       } else if (response.status === 403) {
         throw new Error(`Access denied. You don't have permission to perform this action.`);
       } else if (response.status === 429) {
-        throw new Error(`Rate limit exceeded. Please try again later.`);
+        throw new Error(`Too many requests. Please wait a moment and try again.`);
       } else if (response.status >= 500) {
-        throw new Error(`Server error (${response.status}). Please try again later.`);
+        if (retryCount < MAX_RETRIES) {
+          console.log(`[API] Server error, retrying in ${RETRY_DELAY}ms...`);
+          await delay(RETRY_DELAY * (retryCount + 1));
+          return apiCall<T>(endpoint, options, retryCount + 1);
+        }
+        throw new Error(`Server error. Please try again later.`);
       } else {
-        throw new Error(`API error: ${response.status} - ${errorText || 'Request failed'}`);
+        throw new Error(`Request failed: ${errorText || 'Unknown error'}`);
       }
     }
 
@@ -117,35 +97,40 @@ export const apiCall = async <T = any>(
   } catch (error) {
     console.error("[API] Request failed:", error);
     
-    // Provide more helpful error messages for common issues
     if (error instanceof TypeError && error.message.includes("Network request failed")) {
+      if (retryCount < MAX_RETRIES) {
+        console.log(`[API] Network error, retrying in ${RETRY_DELAY}ms...`);
+        await delay(RETRY_DELAY * (retryCount + 1));
+        return apiCall<T>(endpoint, options, retryCount + 1);
+      }
+      
       if (Platform.OS === "ios") {
-        throw new Error("Unable to connect to server. If you're using Expo Go, please restart the app and try again. For production builds, ensure the backend URL is accessible and SSL certificates are valid.");
+        throw new Error("Unable to connect to server. Please check your internet connection and try again. If using Expo Go, try restarting the app.");
       }
       throw new Error("Unable to connect to server. Please check your internet connection and try again.");
     }
     
     if (error instanceof Error && (error.message.includes("525") || error.message.includes("SSL") || error.message.includes("certificate"))) {
-      if (Platform.OS === "ios") {
-        throw new Error("SSL connection error. Please restart the Expo Go app and try again. If the issue persists, the backend may need SSL certificate configuration.");
+      if (retryCount < MAX_RETRIES) {
+        console.log(`[API] SSL error, retrying in ${RETRY_DELAY}ms...`);
+        await delay(RETRY_DELAY * (retryCount + 1));
+        return apiCall<T>(endpoint, options, retryCount + 1);
       }
-      throw new Error("Server connection error. Please try again later or contact support.");
+      
+      if (Platform.OS === "ios") {
+        throw new Error("Connection error. Please restart the app and try again.");
+      }
+      throw new Error("Server connection error. Please try again later.");
     }
     
     throw error;
   }
 };
 
-/**
- * GET request helper
- */
 export const apiGet = async <T = any>(endpoint: string): Promise<T> => {
   return apiCall<T>(endpoint, { method: "GET" });
 };
 
-/**
- * POST request helper
- */
 export const apiPost = async <T = any>(
   endpoint: string,
   data: any
@@ -156,9 +141,6 @@ export const apiPost = async <T = any>(
   });
 };
 
-/**
- * PUT request helper
- */
 export const apiPut = async <T = any>(
   endpoint: string,
   data: any
@@ -169,9 +151,6 @@ export const apiPut = async <T = any>(
   });
 };
 
-/**
- * PATCH request helper
- */
 export const apiPatch = async <T = any>(
   endpoint: string,
   data: any
@@ -182,10 +161,6 @@ export const apiPatch = async <T = any>(
   });
 };
 
-/**
- * DELETE request helper
- * Always sends a body to avoid FST_ERR_CTP_EMPTY_JSON_BODY errors
- */
 export const apiDelete = async <T = any>(endpoint: string, data: any = {}): Promise<T> => {
   return apiCall<T>(endpoint, {
     method: "DELETE",
@@ -193,15 +168,6 @@ export const apiDelete = async <T = any>(endpoint: string, data: any = {}): Prom
   });
 };
 
-/**
- * Authenticated API call helper
- * Automatically retrieves bearer token from storage and adds to Authorization header
- *
- * @param endpoint - API endpoint path
- * @param options - Fetch options (method, headers, body, etc.)
- * @returns Parsed JSON response
- * @throws Error if token not found or request fails
- */
 export const authenticatedApiCall = async <T = any>(
   endpoint: string,
   options?: RequestInit
@@ -221,17 +187,10 @@ export const authenticatedApiCall = async <T = any>(
   });
 };
 
-/**
- * Authenticated GET request
- */
 export const authenticatedGet = async <T = any>(endpoint: string): Promise<T> => {
   return authenticatedApiCall<T>(endpoint, { method: "GET" });
 };
 
-/**
- * Authenticated POST request
- * Supports both JSON and FormData
- */
 export const authenticatedPost = async <T = any>(
   endpoint: string,
   data: any,
@@ -244,14 +203,12 @@ export const authenticatedPost = async <T = any>(
     body: isFormData ? data : JSON.stringify(data),
   };
 
-  // Don't set Content-Type for FormData - browser will set it with boundary
   if (!isFormData) {
     fetchOptions.headers = {
       "Content-Type": "application/json",
       ...options?.headers,
     };
   } else if (options?.headers) {
-    // For FormData, only add custom headers (not Content-Type)
     const { "Content-Type": _, ...otherHeaders } = options.headers;
     fetchOptions.headers = otherHeaders;
   }
@@ -259,9 +216,6 @@ export const authenticatedPost = async <T = any>(
   return authenticatedApiCall<T>(endpoint, fetchOptions);
 };
 
-/**
- * Authenticated PUT request
- */
 export const authenticatedPut = async <T = any>(
   endpoint: string,
   data: any
@@ -272,9 +226,6 @@ export const authenticatedPut = async <T = any>(
   });
 };
 
-/**
- * Authenticated PATCH request
- */
 export const authenticatedPatch = async <T = any>(
   endpoint: string,
   data: any
@@ -285,10 +236,6 @@ export const authenticatedPatch = async <T = any>(
   });
 };
 
-/**
- * Authenticated DELETE request
- * Always sends a body to avoid FST_ERR_CTP_EMPTY_JSON_BODY errors
- */
 export const authenticatedDelete = async <T = any>(endpoint: string, data: any = {}): Promise<T> => {
   return authenticatedApiCall<T>(endpoint, {
     method: "DELETE",
