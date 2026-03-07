@@ -47,384 +47,6 @@ interface UserProfile {
   is_pro: boolean;
 }
 
-export default function HomeScreen() {
-  const router = useRouter();
-  const { user, loading: authLoading } = useAuth();
-  const { colors } = useTheme();
-  const [entries, setEntries] = useState<FoodEntry[]>([]);
-  const [stats, setStats] = useState<TodayStats>({
-    totalCalories: 0,
-    totalProtein: 0,
-    totalCarbs: 0,
-    totalFat: 0,
-    entryCount: 0,
-  });
-  const [profile, setProfile] = useState<UserProfile | null>(null);
-  const [loading, setLoading] = useState(true);
-  const [showDeleteModal, setShowDeleteModal] = useState(false);
-  const [deleteEntryId, setDeleteEntryId] = useState<string | null>(null);
-  const [errorModal, setErrorModal] = useState<{ visible: boolean; title: string; message: string }>({
-    visible: false,
-    title: '',
-    message: '',
-  });
-
-  const showError = (title: string, message: string) => {
-    setErrorModal({ visible: true, title, message });
-  };
-
-  const loadData = useCallback(async () => {
-    console.log('[API] Loading food entries, stats, and profile');
-    setLoading(true);
-    try {
-      const [todayEntries, todayStats, userProfile] = await Promise.all([
-        authenticatedGet<FoodEntry[]>('/api/food-entries/today'),
-        authenticatedGet<TodayStats>('/api/food-entries/stats/today'),
-        authenticatedGet<UserProfile>('/api/user/profile'),
-      ]);
-
-      console.log('[API] Today entries:', todayEntries);
-      console.log('[API] Today stats:', todayStats);
-      console.log('[API] User profile:', userProfile);
-
-      setEntries(todayEntries);
-      setStats(todayStats);
-      setProfile(userProfile);
-      
-      console.log('[API] Data loaded successfully');
-    } catch (error) {
-      console.error('[API] Error loading data:', error);
-      showError('Error', 'Failed to load data. Please try again.');
-    } finally {
-      setLoading(false);
-    }
-  }, []);
-
-  useEffect(() => {
-    console.log('HomeScreen mounted, user:', user);
-    if (!authLoading && !user) {
-      console.log('User not authenticated, redirecting to auth');
-      router.replace('/auth');
-    } else if (user) {
-      console.log('User authenticated, loading data');
-      loadData();
-    }
-  }, [user, authLoading, router, loadData]);
-
-  const confirmDelete = (entryId: string) => {
-    console.log('Confirming delete for entry:', entryId);
-    setDeleteEntryId(entryId);
-    setShowDeleteModal(true);
-  };
-
-  const handleDelete = async () => {
-    if (!deleteEntryId) return;
-    
-    console.log('[API] Deleting food entry:', deleteEntryId);
-    
-    try {
-      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
-
-      await authenticatedDelete(`/api/food-entries/${deleteEntryId}`);
-      console.log('[API] Food entry deleted successfully');
-
-      const entryToDelete = entries.find(e => e.id === deleteEntryId);
-      if (entryToDelete) {
-        setEntries(entries.filter(e => e.id !== deleteEntryId));
-        setStats({
-          totalCalories: stats.totalCalories - entryToDelete.calories,
-          totalProtein: stats.totalProtein - (entryToDelete.protein || 0),
-          totalCarbs: stats.totalCarbs - (entryToDelete.carbs || 0),
-          totalFat: stats.totalFat - (entryToDelete.fat || 0),
-          entryCount: stats.entryCount - 1,
-        });
-      }
-      
-      setShowDeleteModal(false);
-      setDeleteEntryId(null);
-    } catch (error) {
-      console.error('[API] Error deleting entry:', error);
-      setShowDeleteModal(false);
-      setDeleteEntryId(null);
-      showError('Error', 'Failed to delete food entry. Please try again.');
-    }
-  };
-
-  const dynamicStyles = createStyles(colors);
-
-  if (authLoading || loading) {
-    return (
-      <View style={dynamicStyles.loadingContainer}>
-        <ActivityIndicator size="large" color={colors.primary} />
-      </View>
-    );
-  }
-
-  // Redirect to onboarding if not completed
-  if (profile && !profile.onboarding_completed) {
-    return <Redirect href="/onboarding" />;
-  }
-
-  const calorieGoal = profile?.daily_calorie_target || 2000;
-  const calorieProgress = Math.min((stats.totalCalories / calorieGoal) * 100, 100);
-  const remainingCalories = Math.max(calorieGoal - stats.totalCalories, 0);
-
-  // Group entries by meal type
-  const groupedEntries: { [key: string]: FoodEntry[] } = {
-    breakfast: [],
-    lunch: [],
-    snack: [],
-    dinner: [],
-    other: [],
-  };
-
-  entries.forEach((entry) => {
-    const mealType = entry.mealType?.toLowerCase() || 'other';
-    if (groupedEntries[mealType]) {
-      groupedEntries[mealType].push(entry);
-    } else {
-      groupedEntries.other.push(entry);
-    }
-  });
-
-  const mealSections = [
-    { key: 'breakfast', label: 'Breakfast', icon: 'wb-sunny' },
-    { key: 'lunch', label: 'Lunch', icon: 'restaurant' },
-    { key: 'snack', label: 'Snack', icon: 'fastfood' },
-    { key: 'dinner', label: 'Dinner', icon: 'dinner-dining' },
-    { key: 'other', label: 'Other', icon: 'restaurant' },
-  ];
-
-  return (
-    <SafeAreaView style={dynamicStyles.container} edges={['top']}>
-      <Stack.Screen
-        options={{
-          headerShown: false,
-        }}
-      />
-      
-      <View style={dynamicStyles.header}>
-        <Text style={dynamicStyles.headerTitle}>Calo</Text>
-        <Text style={dynamicStyles.headerSubtitle}>Track your nutrition</Text>
-      </View>
-
-      <ScrollView style={dynamicStyles.scrollView} showsVerticalScrollIndicator={false}>
-        {/* Stats Card */}
-        <View style={dynamicStyles.statsCard}>
-          <View style={dynamicStyles.statsHeader}>
-            <Text style={dynamicStyles.statsTitle}>Today</Text>
-            <Text style={dynamicStyles.statsDate}>{new Date().toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' })}</Text>
-          </View>
-          
-          <View style={dynamicStyles.calorieCircle}>
-            <Text style={dynamicStyles.calorieNumber}>{stats.totalCalories}</Text>
-            <Text style={dynamicStyles.calorieLabel}>calories</Text>
-            <Text style={dynamicStyles.calorieRemaining}>{remainingCalories} remaining</Text>
-            <Text style={dynamicStyles.calorieGoal}>Goal: {calorieGoal}</Text>
-          </View>
-
-          <View style={dynamicStyles.progressBar}>
-            <View style={[dynamicStyles.progressFill, { width: `${calorieProgress}%` }]} />
-          </View>
-
-          <View style={dynamicStyles.macrosRow}>
-            <View style={dynamicStyles.macroItem}>
-              <Text style={dynamicStyles.macroValue}>{stats.totalProtein.toFixed(1)}g</Text>
-              <Text style={dynamicStyles.macroLabel}>Protein</Text>
-            </View>
-            <View style={dynamicStyles.macroItem}>
-              <Text style={dynamicStyles.macroValue}>{stats.totalCarbs.toFixed(1)}g</Text>
-              <Text style={dynamicStyles.macroLabel}>Carbs</Text>
-            </View>
-            <View style={dynamicStyles.macroItem}>
-              <Text style={dynamicStyles.macroValue}>{stats.totalFat.toFixed(1)}g</Text>
-              <Text style={dynamicStyles.macroLabel}>Fat</Text>
-            </View>
-          </View>
-        </View>
-
-        {/* Entries List by Meal Type */}
-        <View style={dynamicStyles.entriesSection}>
-          <Text style={dynamicStyles.sectionTitle}>Today&apos;s Meals</Text>
-          
-          {entries.length === 0 ? (
-            <View style={dynamicStyles.emptyState}>
-              <IconSymbol
-                ios_icon_name="camera.fill"
-                android_material_icon_name="camera"
-                size={48}
-                color={colors.textSecondary}
-              />
-              <Text style={dynamicStyles.emptyText}>No meals logged yet</Text>
-              <Text style={dynamicStyles.emptySubtext}>Tap the camera button to scan your first meal</Text>
-            </View>
-          ) : (
-            mealSections.map((section) => {
-              const sectionEntries = groupedEntries[section.key];
-              if (sectionEntries.length === 0) return null;
-
-              return (
-                <View key={section.key} style={dynamicStyles.mealSection}>
-                  <View style={dynamicStyles.mealSectionHeader}>
-                    <IconSymbol
-                      ios_icon_name={section.icon}
-                      android_material_icon_name={section.icon}
-                      size={20}
-                      color={colors.primary}
-                    />
-                    <Text style={dynamicStyles.mealSectionTitle}>{section.label}</Text>
-                  </View>
-
-                  {sectionEntries.map((entry) => {
-                    const entryCalories = entry.calories.toString();
-                    const entryProtein = entry.protein ? `${entry.protein}g` : '0g';
-                    const entryCarbs = entry.carbs ? `${entry.carbs}g` : '0g';
-                    const entryFat = entry.fat ? `${entry.fat}g` : '0g';
-                    
-                    return (
-                      <View key={entry.id} style={dynamicStyles.entryCard}>
-                        {entry.imageUrl && (
-                          <Image source={{ uri: entry.imageUrl }} style={dynamicStyles.entryImage} />
-                        )}
-                        
-                        <View style={dynamicStyles.entryHeader}>
-                          <View style={dynamicStyles.entryInfo}>
-                            <View style={dynamicStyles.entryNameRow}>
-                              <Text style={dynamicStyles.entryName}>{entry.foodName}</Text>
-                              {entry.recognizedByAi && (
-                                <View style={dynamicStyles.aiBadge}>
-                                  <IconSymbol
-                                    ios_icon_name="sparkles"
-                                    android_material_icon_name="auto-awesome"
-                                    size={12}
-                                    color="#FFFFFF"
-                                  />
-                                  <Text style={dynamicStyles.aiBadgeText}>AI</Text>
-                                </View>
-                              )}
-                            </View>
-                          </View>
-                          <TouchableOpacity
-                            onPress={() => confirmDelete(entry.id)}
-                            style={dynamicStyles.deleteButton}
-                          >
-                            <IconSymbol
-                              ios_icon_name="trash"
-                              android_material_icon_name="delete"
-                              size={20}
-                              color={colors.error}
-                            />
-                          </TouchableOpacity>
-                        </View>
-                        
-                        <View style={dynamicStyles.entryStats}>
-                          <View style={dynamicStyles.entryStat}>
-                            <Text style={dynamicStyles.entryStatValue}>{entryCalories}</Text>
-                            <Text style={dynamicStyles.entryStatLabel}>cal</Text>
-                          </View>
-                          <View style={dynamicStyles.entryStat}>
-                            <Text style={dynamicStyles.entryStatValue}>{entryProtein}</Text>
-                            <Text style={dynamicStyles.entryStatLabel}>protein</Text>
-                          </View>
-                          <View style={dynamicStyles.entryStat}>
-                            <Text style={dynamicStyles.entryStatValue}>{entryCarbs}</Text>
-                            <Text style={dynamicStyles.entryStatLabel}>carbs</Text>
-                          </View>
-                          <View style={dynamicStyles.entryStat}>
-                            <Text style={dynamicStyles.entryStatValue}>{entryFat}</Text>
-                            <Text style={dynamicStyles.entryStatLabel}>fat</Text>
-                          </View>
-                        </View>
-                      </View>
-                    );
-                  })}
-                </View>
-              );
-            })
-          )}
-        </View>
-
-        <View style={{ height: 120 }} />
-      </ScrollView>
-
-      {/* Scan Food Button - Fixed positioning to avoid tab bar */}
-      <View style={dynamicStyles.fabContainer} pointerEvents="box-none">
-        <TouchableOpacity
-          style={dynamicStyles.fab}
-          onPress={() => {
-            console.log('Scan Food button tapped');
-            Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-            router.push('/camera');
-          }}
-          activeOpacity={0.8}
-        >
-          <IconSymbol
-            ios_icon_name="camera.fill"
-            android_material_icon_name="camera"
-            size={28}
-            color="#FFFFFF"
-          />
-        </TouchableOpacity>
-      </View>
-
-      {/* Delete Confirmation Modal */}
-      <Modal
-        visible={showDeleteModal}
-        animationType="fade"
-        transparent={true}
-        onRequestClose={() => setShowDeleteModal(false)}
-      >
-        <View style={dynamicStyles.modalOverlay}>
-          <View style={dynamicStyles.confirmModal}>
-            <Text style={dynamicStyles.confirmTitle}>Delete Entry?</Text>
-            <Text style={dynamicStyles.confirmMessage}>Are you sure you want to delete this food entry?</Text>
-            
-            <View style={dynamicStyles.confirmButtons}>
-              <TouchableOpacity
-                style={dynamicStyles.confirmButtonCancel}
-                onPress={() => {
-                  setShowDeleteModal(false);
-                  setDeleteEntryId(null);
-                }}
-              >
-                <Text style={dynamicStyles.confirmButtonCancelText}>Cancel</Text>
-              </TouchableOpacity>
-              
-              <TouchableOpacity
-                style={dynamicStyles.confirmButtonDelete}
-                onPress={handleDelete}
-              >
-                <Text style={dynamicStyles.confirmButtonDeleteText}>Delete</Text>
-              </TouchableOpacity>
-            </View>
-          </View>
-        </View>
-      </Modal>
-
-      {/* Error Modal */}
-      <Modal
-        visible={errorModal.visible}
-        animationType="fade"
-        transparent={true}
-        onRequestClose={() => setErrorModal({ ...errorModal, visible: false })}
-      >
-        <View style={dynamicStyles.modalOverlay}>
-          <View style={dynamicStyles.confirmModal}>
-            <Text style={dynamicStyles.confirmTitle}>{errorModal.title}</Text>
-            <Text style={dynamicStyles.confirmMessage}>{errorModal.message}</Text>
-            <TouchableOpacity
-              style={dynamicStyles.confirmButtonDelete}
-              onPress={() => setErrorModal({ ...errorModal, visible: false })}
-            >
-              <Text style={dynamicStyles.confirmButtonDeleteText}>OK</Text>
-            </TouchableOpacity>
-          </View>
-        </View>
-      </Modal>
-    </SafeAreaView>
-  );
-}
-
 type ThemeColors = typeof lightColors;
 
 const createStyles = (colors: ThemeColors) => StyleSheet.create({
@@ -534,6 +156,15 @@ const createStyles = (colors: ThemeColors) => StyleSheet.create({
     fontSize: 12,
     color: colors.textSecondary,
     marginTop: 4,
+  },
+  macroProtein: {
+    color: colors.protein,
+  },
+  macroCarbs: {
+    color: colors.carbs,
+  },
+  macroFat: {
+    color: colors.fat,
   },
   entriesSection: {
     marginBottom: 20,
@@ -723,3 +354,385 @@ const createStyles = (colors: ThemeColors) => StyleSheet.create({
     fontWeight: '600',
   },
 });
+
+export default function HomeScreen() {
+  const router = useRouter();
+  const { user, loading: authLoading } = useAuth();
+  const { colors } = useTheme();
+  const [entries, setEntries] = useState<FoodEntry[]>([]);
+  const [stats, setStats] = useState<TodayStats>({
+    totalCalories: 0,
+    totalProtein: 0,
+    totalCarbs: 0,
+    totalFat: 0,
+    entryCount: 0,
+  });
+  const [profile, setProfile] = useState<UserProfile | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [showDeleteModal, setShowDeleteModal] = useState(false);
+  const [deleteEntryId, setDeleteEntryId] = useState<string | null>(null);
+  const [errorModal, setErrorModal] = useState<{ visible: boolean; title: string; message: string }>({
+    visible: false,
+    title: '',
+    message: '',
+  });
+
+  const showError = (title: string, message: string) => {
+    setErrorModal({ visible: true, title, message });
+  };
+
+  const loadData = useCallback(async () => {
+    console.log('[API] Loading food entries, stats, and profile');
+    setLoading(true);
+    try {
+      const [todayEntries, todayStats, userProfile] = await Promise.all([
+        authenticatedGet<FoodEntry[]>('/api/food-entries/today'),
+        authenticatedGet<TodayStats>('/api/food-entries/stats/today'),
+        authenticatedGet<UserProfile>('/api/user/profile'),
+      ]);
+
+      console.log('[API] Today entries:', todayEntries);
+      console.log('[API] Today stats:', todayStats);
+      console.log('[API] User profile:', userProfile);
+
+      setEntries(todayEntries);
+      setStats(todayStats);
+      setProfile(userProfile);
+      
+      console.log('[API] Data loaded successfully');
+    } catch (error) {
+      console.error('[API] Error loading data:', error);
+      showError('Error', 'Failed to load data. Please try again.');
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    console.log('HomeScreen mounted, user:', user);
+    if (!authLoading && !user) {
+      console.log('User not authenticated, redirecting to auth');
+      router.replace('/auth');
+    } else if (user) {
+      console.log('User authenticated, loading data');
+      loadData();
+    }
+  }, [user, authLoading, router, loadData]);
+
+  const confirmDelete = (entryId: string) => {
+    console.log('Confirming delete for entry:', entryId);
+    setDeleteEntryId(entryId);
+    setShowDeleteModal(true);
+  };
+
+  const handleDelete = async () => {
+    if (!deleteEntryId) return;
+    
+    console.log('[API] Deleting food entry:', deleteEntryId);
+    
+    try {
+      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+
+      await authenticatedDelete(`/api/food-entries/${deleteEntryId}`);
+      console.log('[API] Food entry deleted successfully');
+
+      const entryToDelete = entries.find(e => e.id === deleteEntryId);
+      if (entryToDelete) {
+        setEntries(entries.filter(e => e.id !== deleteEntryId));
+        setStats({
+          totalCalories: stats.totalCalories - entryToDelete.calories,
+          totalProtein: stats.totalProtein - (entryToDelete.protein || 0),
+          totalCarbs: stats.totalCarbs - (entryToDelete.carbs || 0),
+          totalFat: stats.totalFat - (entryToDelete.fat || 0),
+          entryCount: stats.entryCount - 1,
+        });
+      }
+      
+      setShowDeleteModal(false);
+      setDeleteEntryId(null);
+    } catch (error) {
+      console.error('[API] Error deleting entry:', error);
+      setShowDeleteModal(false);
+      setDeleteEntryId(null);
+      showError('Error', 'Failed to delete food entry. Please try again.');
+    }
+  };
+
+  const dynamicStyles = createStyles(colors);
+
+  if (authLoading || loading) {
+    return (
+      <View style={dynamicStyles.loadingContainer}>
+        <ActivityIndicator size="large" color={colors.primary} />
+      </View>
+    );
+  }
+
+  // Redirect to onboarding if not completed
+  if (profile && !profile.onboarding_completed) {
+    return <Redirect href="/onboarding" />;
+  }
+
+  const calorieGoal = profile?.daily_calorie_target || 2000;
+  const calorieProgress = Math.min((stats.totalCalories / calorieGoal) * 100, 100);
+  const remainingCalories = Math.max(calorieGoal - stats.totalCalories, 0);
+
+  // Group entries by meal type
+  const groupedEntries: { [key: string]: FoodEntry[] } = {
+    breakfast: [],
+    lunch: [],
+    snack: [],
+    dinner: [],
+    other: [],
+  };
+
+  entries.forEach((entry) => {
+    const mealType = entry.mealType?.toLowerCase() || 'other';
+    if (groupedEntries[mealType]) {
+      groupedEntries[mealType].push(entry);
+    } else {
+      groupedEntries.other.push(entry);
+    }
+  });
+
+  const mealSections = [
+    { key: 'breakfast', label: 'Breakfast', icon: 'wb-sunny' },
+    { key: 'lunch', label: 'Lunch', icon: 'restaurant' },
+    { key: 'snack', label: 'Snack', icon: 'fastfood' },
+    { key: 'dinner', label: 'Dinner', icon: 'dinner-dining' },
+    { key: 'other', label: 'Other', icon: 'restaurant' },
+  ];
+
+  const proteinValue = `${stats.totalProtein.toFixed(1)}g`;
+  const carbsValue = `${stats.totalCarbs.toFixed(1)}g`;
+  const fatValue = `${stats.totalFat.toFixed(1)}g`;
+
+  return (
+    <SafeAreaView style={dynamicStyles.container} edges={['top']}>
+      <Stack.Screen
+        options={{
+          headerShown: false,
+        }}
+      />
+      
+      <View style={dynamicStyles.header}>
+        <Text style={dynamicStyles.headerTitle}>Calo</Text>
+        <Text style={dynamicStyles.headerSubtitle}>Track your nutrition</Text>
+      </View>
+
+      <ScrollView style={dynamicStyles.scrollView} showsVerticalScrollIndicator={false}>
+        {/* Stats Card */}
+        <View style={dynamicStyles.statsCard}>
+          <View style={dynamicStyles.statsHeader}>
+            <Text style={dynamicStyles.statsTitle}>Today</Text>
+            <Text style={dynamicStyles.statsDate}>{new Date().toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' })}</Text>
+          </View>
+          
+          <View style={dynamicStyles.calorieCircle}>
+            <Text style={dynamicStyles.calorieNumber}>{stats.totalCalories}</Text>
+            <Text style={dynamicStyles.calorieLabel}>calories</Text>
+            <Text style={dynamicStyles.calorieRemaining}>{remainingCalories} remaining</Text>
+            <Text style={dynamicStyles.calorieGoal}>Goal: {calorieGoal}</Text>
+          </View>
+
+          <View style={dynamicStyles.progressBar}>
+            <View style={[dynamicStyles.progressFill, { width: `${calorieProgress}%` }]} />
+          </View>
+
+          <View style={dynamicStyles.macrosRow}>
+            <View style={dynamicStyles.macroItem}>
+              <Text style={[dynamicStyles.macroValue, dynamicStyles.macroProtein]}>{proteinValue}</Text>
+              <Text style={dynamicStyles.macroLabel}>Protein</Text>
+            </View>
+            <View style={dynamicStyles.macroItem}>
+              <Text style={[dynamicStyles.macroValue, dynamicStyles.macroCarbs]}>{carbsValue}</Text>
+              <Text style={dynamicStyles.macroLabel}>Carbs</Text>
+            </View>
+            <View style={dynamicStyles.macroItem}>
+              <Text style={[dynamicStyles.macroValue, dynamicStyles.macroFat]}>{fatValue}</Text>
+              <Text style={dynamicStyles.macroLabel}>Fat</Text>
+            </View>
+          </View>
+        </View>
+
+        {/* Entries List by Meal Type */}
+        <View style={dynamicStyles.entriesSection}>
+          <Text style={dynamicStyles.sectionTitle}>Today&apos;s Meals</Text>
+          
+          {entries.length === 0 ? (
+            <View style={dynamicStyles.emptyState}>
+              <IconSymbol
+                ios_icon_name="camera.fill"
+                android_material_icon_name="camera"
+                size={48}
+                color={colors.textSecondary}
+              />
+              <Text style={dynamicStyles.emptyText}>No meals logged yet</Text>
+              <Text style={dynamicStyles.emptySubtext}>Tap the camera button to scan your first meal</Text>
+            </View>
+          ) : (
+            mealSections.map((section) => {
+              const sectionEntries = groupedEntries[section.key];
+              if (sectionEntries.length === 0) return null;
+
+              return (
+                <View key={section.key} style={dynamicStyles.mealSection}>
+                  <View style={dynamicStyles.mealSectionHeader}>
+                    <IconSymbol
+                      ios_icon_name={section.icon}
+                      android_material_icon_name={section.icon}
+                      size={20}
+                      color={colors.primary}
+                    />
+                    <Text style={dynamicStyles.mealSectionTitle}>{section.label}</Text>
+                  </View>
+
+                  {sectionEntries.map((entry) => {
+                    const entryCalories = entry.calories.toString();
+                    const entryProtein = entry.protein ? `${entry.protein}g` : '0g';
+                    const entryCarbs = entry.carbs ? `${entry.carbs}g` : '0g';
+                    const entryFat = entry.fat ? `${entry.fat}g` : '0g';
+                    
+                    return (
+                      <View key={entry.id} style={dynamicStyles.entryCard}>
+                        {entry.imageUrl && (
+                          <Image source={{ uri: entry.imageUrl }} style={dynamicStyles.entryImage} />
+                        )}
+                        
+                        <View style={dynamicStyles.entryHeader}>
+                          <View style={dynamicStyles.entryInfo}>
+                            <View style={dynamicStyles.entryNameRow}>
+                              <Text style={dynamicStyles.entryName}>{entry.foodName}</Text>
+                              {entry.recognizedByAi && (
+                                <View style={dynamicStyles.aiBadge}>
+                                  <IconSymbol
+                                    ios_icon_name="sparkles"
+                                    android_material_icon_name="auto-awesome"
+                                    size={12}
+                                    color="#FFFFFF"
+                                  />
+                                  <Text style={dynamicStyles.aiBadgeText}>AI</Text>
+                                </View>
+                              )}
+                            </View>
+                          </View>
+                          <TouchableOpacity
+                            onPress={() => confirmDelete(entry.id)}
+                            style={dynamicStyles.deleteButton}
+                          >
+                            <IconSymbol
+                              ios_icon_name="trash"
+                              android_material_icon_name="delete"
+                              size={20}
+                              color={colors.error}
+                            />
+                          </TouchableOpacity>
+                        </View>
+                        
+                        <View style={dynamicStyles.entryStats}>
+                          <View style={dynamicStyles.entryStat}>
+                            <Text style={dynamicStyles.entryStatValue}>{entryCalories}</Text>
+                            <Text style={dynamicStyles.entryStatLabel}>cal</Text>
+                          </View>
+                          <View style={dynamicStyles.entryStat}>
+                            <Text style={[dynamicStyles.entryStatValue, dynamicStyles.macroProtein]}>{entryProtein}</Text>
+                            <Text style={dynamicStyles.entryStatLabel}>protein</Text>
+                          </View>
+                          <View style={dynamicStyles.entryStat}>
+                            <Text style={[dynamicStyles.entryStatValue, dynamicStyles.macroCarbs]}>{entryCarbs}</Text>
+                            <Text style={dynamicStyles.entryStatLabel}>carbs</Text>
+                          </View>
+                          <View style={dynamicStyles.entryStat}>
+                            <Text style={[dynamicStyles.entryStatValue, dynamicStyles.macroFat]}>{entryFat}</Text>
+                            <Text style={dynamicStyles.entryStatLabel}>fat</Text>
+                          </View>
+                        </View>
+                      </View>
+                    );
+                  })}
+                </View>
+              );
+            })
+          )}
+        </View>
+
+        <View style={{ height: 120 }} />
+      </ScrollView>
+
+      {/* Scan Food Button - Fixed positioning to avoid tab bar */}
+      <View style={dynamicStyles.fabContainer} pointerEvents="box-none">
+        <TouchableOpacity
+          style={dynamicStyles.fab}
+          onPress={() => {
+            console.log('Scan Food button tapped');
+            Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+            router.push('/camera');
+          }}
+          activeOpacity={0.8}
+        >
+          <IconSymbol
+            ios_icon_name="camera.fill"
+            android_material_icon_name="camera"
+            size={28}
+            color="#FFFFFF"
+          />
+        </TouchableOpacity>
+      </View>
+
+      {/* Delete Confirmation Modal */}
+      <Modal
+        visible={showDeleteModal}
+        animationType="fade"
+        transparent={true}
+        onRequestClose={() => setShowDeleteModal(false)}
+      >
+        <View style={dynamicStyles.modalOverlay}>
+          <View style={dynamicStyles.confirmModal}>
+            <Text style={dynamicStyles.confirmTitle}>Delete Entry?</Text>
+            <Text style={dynamicStyles.confirmMessage}>Are you sure you want to delete this food entry?</Text>
+            
+            <View style={dynamicStyles.confirmButtons}>
+              <TouchableOpacity
+                style={dynamicStyles.confirmButtonCancel}
+                onPress={() => {
+                  setShowDeleteModal(false);
+                  setDeleteEntryId(null);
+                }}
+              >
+                <Text style={dynamicStyles.confirmButtonCancelText}>Cancel</Text>
+              </TouchableOpacity>
+              
+              <TouchableOpacity
+                style={dynamicStyles.confirmButtonDelete}
+                onPress={handleDelete}
+              >
+                <Text style={dynamicStyles.confirmButtonDeleteText}>Delete</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        </View>
+      </Modal>
+
+      {/* Error Modal */}
+      <Modal
+        visible={errorModal.visible}
+        animationType="fade"
+        transparent={true}
+        onRequestClose={() => setErrorModal({ ...errorModal, visible: false })}
+      >
+        <View style={dynamicStyles.modalOverlay}>
+          <View style={dynamicStyles.confirmModal}>
+            <Text style={dynamicStyles.confirmTitle}>{errorModal.title}</Text>
+            <Text style={dynamicStyles.confirmMessage}>{errorModal.message}</Text>
+            <TouchableOpacity
+              style={dynamicStyles.confirmButtonDelete}
+              onPress={() => setErrorModal({ ...errorModal, visible: false })}
+            >
+              <Text style={dynamicStyles.confirmButtonDeleteText}>OK</Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+      </Modal>
+    </SafeAreaView>
+  );
+}

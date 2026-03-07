@@ -18,6 +18,7 @@ const THEME_STORAGE_KEY = '@calo_theme';
 
 export function ThemeProvider({ children }: { children: ReactNode }) {
   const [theme, setTheme] = useState<Theme>('light');
+  const [isLoading, setIsLoading] = useState(true);
 
   useEffect(() => {
     loadTheme();
@@ -31,7 +32,11 @@ export function ThemeProvider({ children }: { children: ReactNode }) {
         console.log('[Theme] Loaded saved theme:', savedTheme);
       }
     } catch (error) {
-      console.error('[Theme] Error loading theme:', error);
+      console.error('[Theme] Error loading theme, using default:', error);
+      // Fallback to light theme if AsyncStorage fails
+      setTheme('light');
+    } finally {
+      setIsLoading(false);
     }
   };
 
@@ -43,11 +48,17 @@ export function ThemeProvider({ children }: { children: ReactNode }) {
       console.log('[Theme] Theme toggled to:', newTheme);
     } catch (error) {
       console.error('[Theme] Error saving theme:', error);
+      // Still allow theme change even if save fails
     }
   };
 
   const isDarkMode = theme === 'dark';
   const colors = isDarkMode ? darkColors : lightColors;
+
+  // Don't render children until theme is loaded to prevent flash
+  if (isLoading) {
+    return null;
+  }
 
   return (
     <ThemeContext.Provider value={{ theme, colors, isDarkMode, toggleTheme }}>

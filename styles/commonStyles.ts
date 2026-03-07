@@ -14,21 +14,27 @@ export const lightColors = {
   border: '#E5E7EB',
   error: '#EF4444',
   success: '#10B981',
+  protein: '#EF4444',
+  carbs: '#F59E0B',
+  fat: '#3B82F6',
 };
 
-// Dark theme colors - Black and Golden
+// Dark theme colors - Dark purple/navy with golden accents (like Cal AI)
 export const darkColors = {
-  background: '#000000',
-  card: '#1A1A1A',
-  text: '#FFD700',
-  textSecondary: '#D4AF37',
-  primary: '#FFD700',
-  secondary: '#FFC700',
-  accent: '#FFD700',
-  highlight: '#FFA500',
-  border: '#333333',
+  background: '#1A1625', // Dark purple/navy background
+  card: '#252033', // Slightly lighter purple for cards
+  text: '#FFFFFF', // White text for primary content
+  textSecondary: '#A0A0B0', // Light gray for secondary text
+  primary: '#FFD700', // Golden yellow for primary actions
+  secondary: '#FFA500', // Orange-gold for secondary elements
+  accent: '#FF6B35', // Coral/orange accent
+  highlight: '#FFD700', // Golden highlight
+  border: '#3A3545', // Subtle purple border
   error: '#FF6B6B',
   success: '#FFD700',
+  protein: '#FF6B6B', // Red for protein
+  carbs: '#FFA500', // Orange for carbs
+  fat: '#4A9EFF', // Blue for fat
 };
 
 // Default to light theme

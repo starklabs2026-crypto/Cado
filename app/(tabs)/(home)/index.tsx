@@ -48,6 +48,315 @@ interface UserProfile {
   is_pro: boolean;
 }
 
+type ThemeColors = typeof lightColors;
+
+const createStyles = (colors: ThemeColors) => StyleSheet.create({
+  container: {
+    flex: 1,
+    backgroundColor: colors.background,
+  },
+  loadingContainer: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    backgroundColor: colors.background,
+  },
+  header: {
+    paddingHorizontal: 20,
+    paddingTop: Platform.OS === 'android' ? 20 : 0,
+    paddingBottom: 16,
+  },
+  headerTitle: {
+    fontSize: 32,
+    fontWeight: '700',
+    color: colors.text,
+    marginBottom: 4,
+  },
+  headerSubtitle: {
+    fontSize: 16,
+    color: colors.textSecondary,
+  },
+  scrollView: {
+    flex: 1,
+    paddingHorizontal: 20,
+  },
+  statsCard: {
+    backgroundColor: colors.card,
+    borderRadius: 20,
+    padding: 24,
+    marginBottom: 24,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 8,
+    elevation: 3,
+  },
+  statsHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 20,
+  },
+  statsTitle: {
+    fontSize: 20,
+    fontWeight: '600',
+    color: colors.text,
+  },
+  statsDate: {
+    fontSize: 14,
+    color: colors.textSecondary,
+  },
+  calorieCircle: {
+    alignItems: 'center',
+    marginBottom: 20,
+  },
+  calorieNumber: {
+    fontSize: 48,
+    fontWeight: '700',
+    color: colors.primary,
+  },
+  calorieLabel: {
+    fontSize: 16,
+    color: colors.textSecondary,
+    marginTop: 4,
+  },
+  calorieRemaining: {
+    fontSize: 14,
+    color: colors.textSecondary,
+    marginTop: 8,
+  },
+  calorieGoal: {
+    fontSize: 12,
+    color: colors.textSecondary,
+    marginTop: 4,
+  },
+  progressBar: {
+    height: 8,
+    backgroundColor: colors.border,
+    borderRadius: 4,
+    marginBottom: 20,
+    overflow: 'hidden',
+  },
+  progressFill: {
+    height: '100%',
+    backgroundColor: colors.primary,
+    borderRadius: 4,
+  },
+  macrosRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-around',
+  },
+  macroItem: {
+    alignItems: 'center',
+  },
+  macroValue: {
+    fontSize: 18,
+    fontWeight: '600',
+    color: colors.text,
+  },
+  macroLabel: {
+    fontSize: 12,
+    color: colors.textSecondary,
+    marginTop: 4,
+  },
+  macroProtein: {
+    color: colors.protein,
+  },
+  macroCarbs: {
+    color: colors.carbs,
+  },
+  macroFat: {
+    color: colors.fat,
+  },
+  entriesSection: {
+    marginBottom: 20,
+  },
+  sectionTitle: {
+    fontSize: 20,
+    fontWeight: '600',
+    color: colors.text,
+    marginBottom: 16,
+  },
+  emptyState: {
+    alignItems: 'center',
+    paddingVertical: 40,
+  },
+  emptyText: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: colors.text,
+    marginTop: 16,
+  },
+  emptySubtext: {
+    fontSize: 14,
+    color: colors.textSecondary,
+    marginTop: 8,
+    textAlign: 'center',
+  },
+  mealSection: {
+    marginBottom: 24,
+  },
+  mealSectionHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    marginBottom: 12,
+  },
+  mealSectionTitle: {
+    fontSize: 18,
+    fontWeight: '600',
+    color: colors.text,
+  },
+  entryCard: {
+    backgroundColor: colors.card,
+    borderRadius: 16,
+    padding: 16,
+    marginBottom: 12,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.05,
+    shadowRadius: 4,
+    elevation: 2,
+    overflow: 'hidden',
+  },
+  entryImage: {
+    width: '100%',
+    height: 150,
+    borderRadius: 12,
+    marginBottom: 12,
+  },
+  entryHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'flex-start',
+    marginBottom: 12,
+  },
+  entryInfo: {
+    flex: 1,
+  },
+  entryNameRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    marginBottom: 4,
+  },
+  entryName: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: colors.text,
+  },
+  aiBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: colors.primary,
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 12,
+    gap: 4,
+  },
+  aiBadgeText: {
+    fontSize: 10,
+    fontWeight: '700',
+    color: '#FFFFFF',
+  },
+  deleteButton: {
+    padding: 4,
+  },
+  entryStats: {
+    flexDirection: 'row',
+    justifyContent: 'space-around',
+  },
+  entryStat: {
+    alignItems: 'center',
+  },
+  entryStatValue: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: colors.text,
+  },
+  entryStatLabel: {
+    fontSize: 11,
+    color: colors.textSecondary,
+    marginTop: 2,
+  },
+  fabContainer: {
+    position: 'absolute',
+    right: 0,
+    bottom: 0,
+    left: 0,
+    alignItems: 'flex-end',
+    paddingRight: 20,
+    paddingBottom: Platform.OS === 'ios' ? 100 : 90,
+  },
+  fab: {
+    width: 64,
+    height: 64,
+    borderRadius: 32,
+    backgroundColor: colors.primary,
+    justifyContent: 'center',
+    alignItems: 'center',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.3,
+    shadowRadius: 8,
+    elevation: 8,
+    zIndex: 1000,
+  },
+  modalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0, 0, 0, 0.5)',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  confirmModal: {
+    backgroundColor: colors.card,
+    borderRadius: 20,
+    padding: 24,
+    marginHorizontal: 20,
+    width: '90%',
+  },
+  confirmTitle: {
+    fontSize: 20,
+    fontWeight: '700',
+    color: colors.text,
+    marginBottom: 12,
+  },
+  confirmMessage: {
+    fontSize: 16,
+    color: colors.textSecondary,
+    marginBottom: 24,
+    lineHeight: 22,
+  },
+  confirmButtons: {
+    flexDirection: 'row',
+    gap: 12,
+  },
+  confirmButtonCancel: {
+    flex: 1,
+    backgroundColor: colors.background,
+    borderRadius: 12,
+    padding: 16,
+    alignItems: 'center',
+  },
+  confirmButtonCancelText: {
+    color: colors.text,
+    fontSize: 16,
+    fontWeight: '600',
+  },
+  confirmButtonDelete: {
+    flex: 1,
+    backgroundColor: colors.error,
+    borderRadius: 12,
+    padding: 16,
+    alignItems: 'center',
+  },
+  confirmButtonDeleteText: {
+    color: '#FFFFFF',
+    fontSize: 16,
+    fontWeight: '600',
+  },
+});
+
 export default function HomeScreen() {
   const router = useRouter();
   const { user, loading: authLoading } = useAuth();
@@ -257,6 +566,10 @@ export default function HomeScreen() {
     { key: 'other', label: 'Other', icon: 'restaurant' },
   ];
 
+  const proteinValue = `${stats.totalProtein.toFixed(1)}g`;
+  const carbsValue = `${stats.totalCarbs.toFixed(1)}g`;
+  const fatValue = `${stats.totalFat.toFixed(1)}g`;
+
   return (
     <SafeAreaView style={dynamicStyles.container} edges={['top']}>
       <Stack.Screen
@@ -291,15 +604,15 @@ export default function HomeScreen() {
 
           <View style={dynamicStyles.macrosRow}>
             <View style={dynamicStyles.macroItem}>
-              <Text style={dynamicStyles.macroValue}>{stats.totalProtein.toFixed(1)}g</Text>
+              <Text style={[dynamicStyles.macroValue, dynamicStyles.macroProtein]}>{proteinValue}</Text>
               <Text style={dynamicStyles.macroLabel}>Protein</Text>
             </View>
             <View style={dynamicStyles.macroItem}>
-              <Text style={dynamicStyles.macroValue}>{stats.totalCarbs.toFixed(1)}g</Text>
+              <Text style={[dynamicStyles.macroValue, dynamicStyles.macroCarbs]}>{carbsValue}</Text>
               <Text style={dynamicStyles.macroLabel}>Carbs</Text>
             </View>
             <View style={dynamicStyles.macroItem}>
-              <Text style={dynamicStyles.macroValue}>{stats.totalFat.toFixed(1)}g</Text>
+              <Text style={[dynamicStyles.macroValue, dynamicStyles.macroFat]}>{fatValue}</Text>
               <Text style={dynamicStyles.macroLabel}>Fat</Text>
             </View>
           </View>
@@ -385,15 +698,15 @@ export default function HomeScreen() {
                             <Text style={dynamicStyles.entryStatLabel}>cal</Text>
                           </View>
                           <View style={dynamicStyles.entryStat}>
-                            <Text style={dynamicStyles.entryStatValue}>{entryProtein}</Text>
+                            <Text style={[dynamicStyles.entryStatValue, dynamicStyles.macroProtein]}>{entryProtein}</Text>
                             <Text style={dynamicStyles.entryStatLabel}>protein</Text>
                           </View>
                           <View style={dynamicStyles.entryStat}>
-                            <Text style={dynamicStyles.entryStatValue}>{entryCarbs}</Text>
+                            <Text style={[dynamicStyles.entryStatValue, dynamicStyles.macroCarbs]}>{entryCarbs}</Text>
                             <Text style={dynamicStyles.entryStatLabel}>carbs</Text>
                           </View>
                           <View style={dynamicStyles.entryStat}>
-                            <Text style={dynamicStyles.entryStatValue}>{entryFat}</Text>
+                            <Text style={[dynamicStyles.entryStatValue, dynamicStyles.macroFat]}>{entryFat}</Text>
                             <Text style={dynamicStyles.entryStatLabel}>fat</Text>
                           </View>
                         </View>
@@ -486,303 +799,3 @@ export default function HomeScreen() {
     </SafeAreaView>
   );
 }
-
-type ThemeColors = typeof lightColors;
-
-const createStyles = (colors: ThemeColors) => StyleSheet.create({
-  container: {
-    flex: 1,
-    backgroundColor: colors.background,
-  },
-  loadingContainer: {
-    flex: 1,
-    justifyContent: 'center',
-    alignItems: 'center',
-    backgroundColor: colors.background,
-  },
-  header: {
-    paddingHorizontal: 20,
-    paddingTop: Platform.OS === 'android' ? 20 : 0,
-    paddingBottom: 16,
-  },
-  headerTitle: {
-    fontSize: 32,
-    fontWeight: '700',
-    color: colors.text,
-    marginBottom: 4,
-  },
-  headerSubtitle: {
-    fontSize: 16,
-    color: colors.textSecondary,
-  },
-  scrollView: {
-    flex: 1,
-    paddingHorizontal: 20,
-  },
-  statsCard: {
-    backgroundColor: colors.card,
-    borderRadius: 20,
-    padding: 24,
-    marginBottom: 24,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.1,
-    shadowRadius: 8,
-    elevation: 3,
-  },
-  statsHeader: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    marginBottom: 20,
-  },
-  statsTitle: {
-    fontSize: 20,
-    fontWeight: '600',
-    color: colors.text,
-  },
-  statsDate: {
-    fontSize: 14,
-    color: colors.textSecondary,
-  },
-  calorieCircle: {
-    alignItems: 'center',
-    marginBottom: 20,
-  },
-  calorieNumber: {
-    fontSize: 48,
-    fontWeight: '700',
-    color: colors.primary,
-  },
-  calorieLabel: {
-    fontSize: 16,
-    color: colors.textSecondary,
-    marginTop: 4,
-  },
-  calorieRemaining: {
-    fontSize: 14,
-    color: colors.textSecondary,
-    marginTop: 8,
-  },
-  calorieGoal: {
-    fontSize: 12,
-    color: colors.textSecondary,
-    marginTop: 4,
-  },
-  progressBar: {
-    height: 8,
-    backgroundColor: colors.border,
-    borderRadius: 4,
-    marginBottom: 20,
-    overflow: 'hidden',
-  },
-  progressFill: {
-    height: '100%',
-    backgroundColor: colors.primary,
-    borderRadius: 4,
-  },
-  macrosRow: {
-    flexDirection: 'row',
-    justifyContent: 'space-around',
-  },
-  macroItem: {
-    alignItems: 'center',
-  },
-  macroValue: {
-    fontSize: 18,
-    fontWeight: '600',
-    color: colors.text,
-  },
-  macroLabel: {
-    fontSize: 12,
-    color: colors.textSecondary,
-    marginTop: 4,
-  },
-  entriesSection: {
-    marginBottom: 20,
-  },
-  sectionTitle: {
-    fontSize: 20,
-    fontWeight: '600',
-    color: colors.text,
-    marginBottom: 16,
-  },
-  emptyState: {
-    alignItems: 'center',
-    paddingVertical: 40,
-  },
-  emptyText: {
-    fontSize: 16,
-    fontWeight: '600',
-    color: colors.text,
-    marginTop: 16,
-  },
-  emptySubtext: {
-    fontSize: 14,
-    color: colors.textSecondary,
-    marginTop: 8,
-    textAlign: 'center',
-  },
-  mealSection: {
-    marginBottom: 24,
-  },
-  mealSectionHeader: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
-    marginBottom: 12,
-  },
-  mealSectionTitle: {
-    fontSize: 18,
-    fontWeight: '600',
-    color: colors.text,
-  },
-  entryCard: {
-    backgroundColor: colors.card,
-    borderRadius: 16,
-    padding: 16,
-    marginBottom: 12,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 1 },
-    shadowOpacity: 0.05,
-    shadowRadius: 4,
-    elevation: 2,
-    overflow: 'hidden',
-  },
-  entryImage: {
-    width: '100%',
-    height: 150,
-    borderRadius: 12,
-    marginBottom: 12,
-  },
-  entryHeader: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'flex-start',
-    marginBottom: 12,
-  },
-  entryInfo: {
-    flex: 1,
-  },
-  entryNameRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
-    marginBottom: 4,
-  },
-  entryName: {
-    fontSize: 16,
-    fontWeight: '600',
-    color: colors.text,
-  },
-  aiBadge: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: colors.primary,
-    paddingHorizontal: 8,
-    paddingVertical: 4,
-    borderRadius: 12,
-    gap: 4,
-  },
-  aiBadgeText: {
-    fontSize: 10,
-    fontWeight: '700',
-    color: '#FFFFFF',
-  },
-  deleteButton: {
-    padding: 4,
-  },
-  entryStats: {
-    flexDirection: 'row',
-    justifyContent: 'space-around',
-  },
-  entryStat: {
-    alignItems: 'center',
-  },
-  entryStatValue: {
-    fontSize: 16,
-    fontWeight: '600',
-    color: colors.text,
-  },
-  entryStatLabel: {
-    fontSize: 11,
-    color: colors.textSecondary,
-    marginTop: 2,
-  },
-  fabContainer: {
-    position: 'absolute',
-    right: 0,
-    bottom: 0,
-    left: 0,
-    alignItems: 'flex-end',
-    paddingRight: 20,
-    paddingBottom: Platform.OS === 'ios' ? 100 : 90,
-  },
-  fab: {
-    width: 64,
-    height: 64,
-    borderRadius: 32,
-    backgroundColor: colors.primary,
-    justifyContent: 'center',
-    alignItems: 'center',
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.3,
-    shadowRadius: 8,
-    elevation: 8,
-    zIndex: 1000,
-  },
-  modalOverlay: {
-    flex: 1,
-    backgroundColor: 'rgba(0, 0, 0, 0.5)',
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  confirmModal: {
-    backgroundColor: colors.card,
-    borderRadius: 20,
-    padding: 24,
-    marginHorizontal: 20,
-    width: '90%',
-  },
-  confirmTitle: {
-    fontSize: 20,
-    fontWeight: '700',
-    color: colors.text,
-    marginBottom: 12,
-  },
-  confirmMessage: {
-    fontSize: 16,
-    color: colors.textSecondary,
-    marginBottom: 24,
-    lineHeight: 22,
-  },
-  confirmButtons: {
-    flexDirection: 'row',
-    gap: 12,
-  },
-  confirmButtonCancel: {
-    flex: 1,
-    backgroundColor: colors.background,
-    borderRadius: 12,
-    padding: 16,
-    alignItems: 'center',
-  },
-  confirmButtonCancelText: {
-    color: colors.text,
-    fontSize: 16,
-    fontWeight: '600',
-  },
-  confirmButtonDelete: {
-    flex: 1,
-    backgroundColor: colors.error,
-    borderRadius: 12,
-    padding: 16,
-    alignItems: 'center',
-  },
-  confirmButtonDeleteText: {
-    color: '#FFFFFF',
-    fontSize: 16,
-    fontWeight: '600',
-  },
-});
