@@ -645,7 +645,8 @@ describe("API Integration Tests", () => {
       const data = await res.json();
       expect(data.id).toBeDefined();
       expect(data.name).toBeDefined();
-      expect(typeof data.caloriesPer100g).toBe("number");
+      expect(typeof data.calories).toBe("number");
+      expect(typeof data.servingUnit).toBe("string");
     }
   });
 

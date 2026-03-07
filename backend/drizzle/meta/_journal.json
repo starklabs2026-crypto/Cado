@@ -64,6 +64,20 @@
       "when": 1772868279046,
       "tag": "20260307072439_magenta_ken_ellis",
       "breakpoints": true
+    },
+    {
+      "idx": 9,
+      "version": "7",
+      "when": 1772884800000,
+      "tag": "20260307114000_fixed_food_schema",
+      "breakpoints": true
+    },
+    {
+      "idx": 10,
+      "version": "7",
+      "when": 1772883676006,
+      "tag": "20260307114116_lonely_nuke",
+      "breakpoints": true
     }
   ]
 }

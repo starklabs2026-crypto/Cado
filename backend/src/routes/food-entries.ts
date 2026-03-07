@@ -202,11 +202,11 @@ export function registerFoodEntryRoutes(app: App) {
         id: r.item.id,
         name: r.item.name,
         category: r.item.category,
-        calories: Math.round(r.item.caloriesPer100g * (r.item.servingSizeG / 100)),
-        protein: Math.round((r.item.proteinPer100g * (r.item.servingSizeG / 100)) * 10) / 10,
-        carbs: Math.round((r.item.carbsPer100g * (r.item.servingSizeG / 100)) * 10) / 10,
-        fat: Math.round((r.item.fatPer100g * (r.item.servingSizeG / 100)) * 10) / 10,
-        servingSize: r.item.servingSizeG,
+        calories: r.item.calories,
+        protein: r.item.protein,
+        carbs: r.item.carbs,
+        fat: r.item.fat,
+        servingSize: r.item.servingSize,
       }));
 
       app.logger.info({ userId: session.user.id, resultCount: response.length, query }, 'Food search completed');
@@ -235,11 +235,12 @@ export function registerFoodEntryRoutes(app: App) {
               id: { type: 'string', format: 'uuid' },
               name: { type: 'string' },
               category: { type: 'string' },
-              caloriesPer100g: { type: 'number' },
-              proteinPer100g: { type: 'number' },
-              carbsPer100g: { type: 'number' },
-              fatPer100g: { type: 'number' },
+              calories: { type: 'number' },
+              protein: { type: 'number' },
+              carbs: { type: 'number' },
+              fat: { type: 'number' },
               servingSize: { type: 'number' },
+              servingUnit: { type: 'string' },
               description: { type: ['string', 'null'] },
               aliases: { type: ['array', 'null'], items: { type: 'string' } },
             },
@@ -278,11 +279,12 @@ export function registerFoodEntryRoutes(app: App) {
         id: item.id,
         name: item.name,
         category: item.category,
-        caloriesPer100g: item.caloriesPer100g,
-        proteinPer100g: item.proteinPer100g,
-        carbsPer100g: item.carbsPer100g,
-        fatPer100g: item.fatPer100g,
-        servingSize: item.servingSizeG,
+        calories: item.calories,
+        protein: item.protein,
+        carbs: item.carbs,
+        fat: item.fat,
+        servingSize: item.servingSize,
+        servingUnit: item.servingUnit,
         description: item.description,
         aliases: item.aliases,
       };
@@ -394,7 +396,9 @@ export function registerFoodEntryRoutes(app: App) {
       let nutritionData: z.infer<typeof nutritionSchema>;
       try {
         app.logger.info({ userId: session.user.id }, 'Calling GPT-4 Vision to analyze food image');
-        const result = await generateObject({
+
+        // Wrap in Promise.race with timeout to prevent hanging
+        const analysisPromise = generateObject({
           model: gateway('openai/gpt-4o'),
           schema: nutritionSchema,
           schemaName: 'FoodNutrition',
@@ -433,7 +437,13 @@ Return values for the portion shown in the image, not per 100g.`,
             },
           ],
         });
-        nutritionData = result.object;
+
+        const timeoutPromise = new Promise((_, reject) =>
+          setTimeout(() => reject(new Error('AI analysis timeout after 4 seconds')), 4000)
+        );
+
+        const result = await Promise.race([analysisPromise, timeoutPromise]);
+        nutritionData = (result as Awaited<typeof analysisPromise>).object;
         app.logger.info(
           { userId: session.user.id, foodName: nutritionData.foodName, calories: nutritionData.calories, confidence: nutritionData.confidence },
           'Food image analyzed with GPT-4 Vision'
@@ -473,10 +483,10 @@ Return values for the portion shown in the image, not per 100g.`,
             databaseSuggestions = scored.map((r) => ({
               id: r.item.id,
               name: r.item.name,
-              calories: Math.round(r.item.caloriesPer100g * (r.item.servingSizeG / 100)),
-              protein: Math.round((r.item.proteinPer100g * (r.item.servingSizeG / 100)) * 10) / 10,
-              carbs: Math.round((r.item.carbsPer100g * (r.item.servingSizeG / 100)) * 10) / 10,
-              fat: Math.round((r.item.fatPer100g * (r.item.servingSizeG / 100)) * 10) / 10,
+              calories: r.item.calories,
+              protein: r.item.protein,
+              carbs: r.item.carbs,
+              fat: r.item.fat,
             }));
             app.logger.info({ suggestions: databaseSuggestions.length }, 'Database suggestions found');
           }
@@ -574,10 +584,10 @@ Return values for the portion shown in the image, not per 100g.`,
         if (dbFood.length > 0) {
           const food = dbFood[0];
           finalFoodName = food.name;
-          finalCalories = Math.round(food.caloriesPer100g * (food.servingSizeG / 100));
-          finalProtein = Math.round((food.proteinPer100g * (food.servingSizeG / 100)) * 10) / 10;
-          finalCarbs = Math.round((food.carbsPer100g * (food.servingSizeG / 100)) * 10) / 10;
-          finalFat = Math.round((food.fatPer100g * (food.servingSizeG / 100)) * 10) / 10;
+          finalCalories = food.calories;
+          finalProtein = food.protein;
+          finalCarbs = food.carbs;
+          finalFat = food.fat;
           app.logger.info({ databaseFoodId, finalFoodName }, 'Using database food data');
         }
       }

@@ -89,17 +89,35 @@ export const groupMessages = pgTable('group_messages', {
   createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
 });
 
+export const guestUsers = pgTable('guest_users', {
+  id: text('id').primaryKey(),
+  sessionToken: text('session_token').unique().notNull(),
+  lastActivityAt: timestamp('last_activity_at', { withTimezone: true }).notNull().defaultNow(),
+  createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+});
+
+export const guestDailyUsage = pgTable('guest_daily_usage', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  guestId: text('guest_id').notNull().references(() => guestUsers.id, { onDelete: 'cascade' }),
+  date: date('date').notNull(),
+  scansCount: integer('scans_count').default(0).notNull(),
+  createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+}, (table) => ({
+  guestDateUnique: uniqueIndex('guest_date_unique').on(table.guestId, table.date),
+}));
+
 export const foodDatabase = pgTable('food_database', {
   id: uuid('id').primaryKey().defaultRandom(),
   name: text('name').notNull(),
-  category: text('category').notNull(), // 'indian', 'fast_food', 'beverage', 'ice_cream', 'dessert', 'other'
-  caloriesPer100g: real('calories_per_100g').notNull(),
-  proteinPer100g: real('protein_per_100g').notNull(),
-  carbsPer100g: real('carbs_per_100g').notNull(),
-  fatPer100g: real('fat_per_100g').notNull(),
-  servingSizeG: real('serving_size_g').default(100).notNull(),
+  category: text('category').notNull(),
+  calories: integer('calories').notNull(), // calories per serving
+  protein: real('protein').notNull(),
+  carbs: real('carbs').notNull(),
+  fat: real('fat').notNull(),
+  servingSize: real('serving_size').notNull(), // e.g., 100, 250, 150
+  servingUnit: text('serving_unit').notNull(), // e.g., 'g', 'ml', 'piece', 'cup', 'bowl'
   description: text('description'),
-  aliases: text('aliases').array(), // array of search variations
+  aliases: text('aliases').array(),
   createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
 }, (table) => ({
   nameIdx: index('food_database_name_idx').on(table.name),
