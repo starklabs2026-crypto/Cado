@@ -41,6 +41,7 @@ interface DatabaseFood {
   carbs: number;
   fat: number;
   servingSize: number;
+  servingUnit?: string;
 }
 
 type MealType = 'breakfast' | 'lunch' | 'snack' | 'dinner';
@@ -207,18 +208,42 @@ export default function CameraScreen() {
 
       console.log('[API] GPT-4 Vision analysis result:', result);
       console.log('[API] Confidence level:', result.confidence);
+      console.log('[API] Nutritional data - Calories:', result.calories, 'Protein:', result.protein, 'Carbs:', result.carbs, 'Fat:', result.fat);
+      
       if (result.databaseSuggestions) {
         console.log('[API] Database suggestions count:', result.databaseSuggestions.length);
       }
       
-      await incrementUsage();
+      // Check if nutritional data is valid (not all zeros)
+      // Backend now returns fallback values (200 cal, 5g protein, 30g carbs, 8g fat) instead of zeros
+      const hasValidNutrition = result.calories > 0 || result.protein > 0 || result.carbs > 0 || result.fat > 0;
       
-      setAnalysisResult(result);
-      setShowResultModal(true);
-      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+      if (!hasValidNutrition) {
+        console.warn('[API] Analysis returned zero nutritional values - prompting user to search database');
+        showError(
+          'Incomplete Analysis',
+          'The AI could not determine the nutritional values. Please search our food database to find the correct item.'
+        );
+        // Still show the result modal so user can search
+        setAnalysisResult(result);
+        setShowResultModal(true);
+        setShowManualSearch(true); // Auto-open search modal
+      } else {
+        await incrementUsage();
+        setAnalysisResult(result);
+        setShowResultModal(true);
+        Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+        
+        // If confidence is low but we have database suggestions, show a hint
+        if (result.confidence === 'low' && result.databaseSuggestions && result.databaseSuggestions.length > 0) {
+          console.log('[API] Low confidence - database suggestions available for user to pick from');
+        }
+      }
     } catch (error: any) {
       console.error('[API] Error analyzing image:', error);
-      showError('Analysis Failed', error.message || 'Failed to analyze the food image. Please try again.');
+      showError('Analysis Failed', error.message || 'Failed to analyze the food image. Please try searching our food database instead.');
+      // Open manual search as fallback
+      setShowManualSearch(true);
     } finally {
       setAnalyzing(false);
     }
@@ -251,6 +276,8 @@ export default function CameraScreen() {
 
   const selectDatabaseFood = (food: DatabaseFood) => {
     console.log('User selected database food:', food.name);
+    console.log('Database food nutritional data - Calories:', food.calories, 'Protein:', food.protein, 'Carbs:', food.carbs, 'Fat:', food.fat);
+    console.log('Database food serving info - Size:', food.servingSize, 'Unit:', (food as any).servingUnit);
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
     
     setSelectedDatabaseFood(food);
@@ -258,6 +285,7 @@ export default function CameraScreen() {
     
     // Update analysis result with database food data
     // The API returns calories/protein/carbs/fat already calculated for the serving size
+    // Backend now guarantees these values are non-zero for database items
     const currentResult = analysisResult || {
       foodName: '',
       calories: 0,
@@ -286,7 +314,25 @@ export default function CameraScreen() {
   const saveEntry = async () => {
     if (!analysisResult) return;
 
-    console.log('[API] Saving food entry');
+    // Validate nutritional data before saving - backend also validates this
+    const hasValidNutrition = analysisResult.calories > 0 || analysisResult.protein > 0 || analysisResult.carbs > 0 || analysisResult.fat > 0;
+    
+    if (!hasValidNutrition) {
+      showError(
+        'Invalid Nutritional Data',
+        'Cannot save entry with zero nutritional values. Please search our food database to find the correct item.'
+      );
+      setShowManualSearch(true);
+      return;
+    }
+
+    console.log('[API] Saving food entry with nutritional data:', {
+      foodName: analysisResult.foodName,
+      calories: analysisResult.calories,
+      protein: analysisResult.protein,
+      carbs: analysisResult.carbs,
+      fat: analysisResult.fat,
+    });
     setSaving(true);
 
     try {
@@ -330,7 +376,22 @@ export default function CameraScreen() {
       router.back();
     } catch (error: any) {
       console.error('[API] Error saving entry:', error);
-      showError('Save Failed', error.message || 'Failed to save food entry. Please try again.');
+      // Handle backend validation error for incomplete nutritional data
+      const errorMessage = error.message || '';
+      if (
+        errorMessage.includes('Nutritional data is incomplete') ||
+        errorMessage.includes('incomplete') ||
+        errorMessage.includes('0 calories') ||
+        errorMessage.includes('zero')
+      ) {
+        showError(
+          'Incomplete Nutritional Data',
+          'The nutritional values appear to be incomplete. Please search our food database to find the correct item with accurate nutrition info.'
+        );
+        setShowManualSearch(true);
+      } else {
+        showError('Save Failed', errorMessage || 'Failed to save food entry. Please try again.');
+      }
     } finally {
       setSaving(false);
     }
@@ -364,6 +425,11 @@ export default function CameraScreen() {
     : colors.error;
 
   const confidenceText = analysisResult?.confidence || 'unknown';
+  
+  // Check if nutritional data is valid
+  const hasValidNutrition = analysisResult 
+    ? (analysisResult.calories > 0 || analysisResult.protein > 0 || analysisResult.carbs > 0 || analysisResult.fat > 0)
+    : false;
 
   const mealTypeOptions: { value: MealType; label: string; icon: string }[] = [
     { value: 'breakfast', label: 'Breakfast', icon: 'wb-sunny' },
@@ -521,7 +587,21 @@ export default function CameraScreen() {
                     </View>
                   </View>
 
-                  {analysisResult.confidence === 'low' && (
+                  {!hasValidNutrition && (
+                    <View style={dynamicStyles.warningBox}>
+                      <IconSymbol
+                        ios_icon_name="exclamationmark.triangle"
+                        android_material_icon_name="warning"
+                        size={20}
+                        color={colors.error}
+                      />
+                      <Text style={dynamicStyles.warningText}>
+                        No nutritional data available. Please search our database to find the correct food item.
+                      </Text>
+                    </View>
+                  )}
+
+                  {(analysisResult.confidence === 'low' || !hasValidNutrition) && (
                     <View style={dynamicStyles.warningBox}>
                       <IconSymbol
                         ios_icon_name="exclamationmark.triangle"
@@ -530,7 +610,9 @@ export default function CameraScreen() {
                         color={colors.accent}
                       />
                       <Text style={dynamicStyles.warningText}>
-                        Low confidence detection. You can search our database for the correct food item.
+                        {!hasValidNutrition 
+                          ? 'Please search our database for accurate nutritional information.'
+                          : 'Low confidence detection. You can search our database for the correct food item.'}
                       </Text>
                     </View>
                   )}
@@ -539,7 +621,7 @@ export default function CameraScreen() {
                     <View style={dynamicStyles.resultHeader}>
                       <View style={{ flex: 1 }}>
                         <Text style={dynamicStyles.resultLabel}>Food Name</Text>
-                        <Text style={dynamicStyles.resultValue}>{analysisResult.foodName}</Text>
+                        <Text style={dynamicStyles.resultValue}>{analysisResult.foodName || 'Unknown'}</Text>
                       </View>
                       <TouchableOpacity
                         style={dynamicStyles.searchButton}
@@ -564,14 +646,24 @@ export default function CameraScreen() {
                           key={suggestion.id}
                           style={dynamicStyles.suggestionItem}
                           onPress={() => selectDatabaseFood({
-                            ...suggestion,
-                            category: suggestion.category || 'other',
-                            servingSize: 100,
+                            id: suggestion.id,
+                            name: suggestion.name,
+                            category: (suggestion as any).category || 'other',
+                            calories: suggestion.calories,
+                            protein: suggestion.protein,
+                            carbs: suggestion.carbs,
+                            fat: suggestion.fat,
+                            servingSize: (suggestion as any).servingSize || 100,
+                            servingUnit: (suggestion as any).servingUnit || 'g',
                           })}
                         >
                           <View style={{ flex: 1 }}>
                             <Text style={dynamicStyles.suggestionName}>{suggestion.name}</Text>
-                            <Text style={dynamicStyles.suggestionCategory}>{suggestion.category?.replace('_', ' ')}</Text>
+                            <View style={{ flexDirection: 'row', gap: 8, marginTop: 2 }}>
+                              <Text style={dynamicStyles.suggestionCategory}>
+                                P: {Math.round(suggestion.protein)}g · C: {Math.round(suggestion.carbs)}g · F: {Math.round(suggestion.fat)}g
+                              </Text>
+                            </View>
                           </View>
                           <Text style={dynamicStyles.suggestionCalories}>{Math.round(suggestion.calories)} cal</Text>
                         </TouchableOpacity>
@@ -581,19 +673,27 @@ export default function CameraScreen() {
 
                   <View style={dynamicStyles.nutritionGrid}>
                     <View style={dynamicStyles.nutritionItem}>
-                      <Text style={dynamicStyles.nutritionValue}>{analysisResult.calories}</Text>
+                      <Text style={[dynamicStyles.nutritionValue, !hasValidNutrition && dynamicStyles.nutritionValueZero]}>
+                        {analysisResult.calories}
+                      </Text>
                       <Text style={dynamicStyles.nutritionLabel}>Calories</Text>
                     </View>
                     <View style={dynamicStyles.nutritionItem}>
-                      <Text style={dynamicStyles.nutritionValue}>{analysisResult.protein}g</Text>
+                      <Text style={[dynamicStyles.nutritionValue, !hasValidNutrition && dynamicStyles.nutritionValueZero]}>
+                        {analysisResult.protein}g
+                      </Text>
                       <Text style={dynamicStyles.nutritionLabel}>Protein</Text>
                     </View>
                     <View style={dynamicStyles.nutritionItem}>
-                      <Text style={dynamicStyles.nutritionValue}>{analysisResult.carbs}g</Text>
+                      <Text style={[dynamicStyles.nutritionValue, !hasValidNutrition && dynamicStyles.nutritionValueZero]}>
+                        {analysisResult.carbs}g
+                      </Text>
                       <Text style={dynamicStyles.nutritionLabel}>Carbs</Text>
                     </View>
                     <View style={dynamicStyles.nutritionItem}>
-                      <Text style={dynamicStyles.nutritionValue}>{analysisResult.fat}g</Text>
+                      <Text style={[dynamicStyles.nutritionValue, !hasValidNutrition && dynamicStyles.nutritionValueZero]}>
+                        {analysisResult.fat}g
+                      </Text>
                       <Text style={dynamicStyles.nutritionLabel}>Fat</Text>
                     </View>
                   </View>
@@ -641,14 +741,19 @@ export default function CameraScreen() {
                     </TouchableOpacity>
 
                     <TouchableOpacity
-                      style={[dynamicStyles.saveButton, saving && dynamicStyles.saveButtonDisabled]}
+                      style={[
+                        dynamicStyles.saveButton, 
+                        (saving || !hasValidNutrition) && dynamicStyles.saveButtonDisabled
+                      ]}
                       onPress={saveEntry}
-                      disabled={saving}
+                      disabled={saving || !hasValidNutrition}
                     >
                       {saving ? (
                         <ActivityIndicator color="#FFFFFF" />
                       ) : (
-                        <Text style={dynamicStyles.saveButtonText}>Save Entry</Text>
+                        <Text style={dynamicStyles.saveButtonText}>
+                          {hasValidNutrition ? 'Save Entry' : 'Search Database First'}
+                        </Text>
                       )}
                     </TouchableOpacity>
                   </View>
@@ -689,7 +794,7 @@ export default function CameraScreen() {
               />
               <TextInput
                 style={dynamicStyles.searchInput}
-                placeholder="Search for food (e.g., chow mein, gulab jamun, apple)"
+                placeholder="Search for food (e.g., vanilla ice cream, chow mein, apple)"
                 placeholderTextColor={colors.textSecondary}
                 value={searchQuery}
                 onChangeText={(text) => {
@@ -712,7 +817,7 @@ export default function CameraScreen() {
                   />
                   <Text style={dynamicStyles.emptySearchText}>No results found</Text>
                   <Text style={dynamicStyles.emptySearchSubtext}>
-                    Try: chow mein, fried rice, gulab jamun, apple, scrambled eggs
+                    Try: vanilla ice cream, chow mein, fried rice, gulab jamun, apple, scrambled eggs
                   </Text>
                 </View>
               )}
@@ -746,7 +851,9 @@ export default function CameraScreen() {
                       <Text style={dynamicStyles.searchResultMacroText}>F: {Math.round(food.fat)}g</Text>
                     </View>
                     {food.servingSize && (
-                      <Text style={dynamicStyles.searchResultServingText}>per {food.servingSize}g serving</Text>
+                      <Text style={dynamicStyles.searchResultServingText}>
+                        per {food.servingSize}{food.servingUnit || 'g'} serving
+                      </Text>
                     )}
                   </View>
                   <View style={dynamicStyles.searchResultCaloriesContainer}>
@@ -1053,6 +1160,9 @@ const createStyles = (colors: ThemeColors) => StyleSheet.create({
     color: colors.primary,
     marginBottom: 4,
   },
+  nutritionValueZero: {
+    color: colors.error,
+  },
   nutritionLabel: {
     fontSize: 12,
     color: colors.textSecondary,
@@ -1276,6 +1386,8 @@ const createStyles = (colors: ThemeColors) => StyleSheet.create({
     fontSize: 14,
     color: colors.textSecondary,
     marginTop: 8,
+    textAlign: 'center',
+    paddingHorizontal: 20,
   },
   searchResultItem: {
     flexDirection: 'row',
