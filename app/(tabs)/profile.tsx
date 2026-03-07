@@ -7,7 +7,7 @@ import { IconSymbol } from '@/components/IconSymbol';
 import { useTheme } from '@/contexts/ThemeContext';
 import { lightColors } from '@/styles/commonStyles';
 import { useAuth } from '@/contexts/AuthContext';
-import { authenticatedGet } from '@/utils/api';
+import { authenticatedGet, authenticatedPost } from '@/utils/api';
 import * as Haptics from 'expo-haptics';
 
 interface UserProfile {
@@ -39,6 +39,12 @@ export default function ProfileScreen() {
   const [profile, setProfile] = useState<UserProfile | null>(null);
   const [usage, setUsage] = useState<UsageInfo | null>(null);
   const [loadingProfile, setLoadingProfile] = useState(true);
+  const [reseedingDatabase, setReseedingDatabase] = useState(false);
+  const [reseedModal, setReseedModal] = useState<{ visible: boolean; success: boolean; message: string; itemCount?: number }>({
+    visible: false,
+    success: false,
+    message: '',
+  });
   const [errorModal, setErrorModal] = useState<{ visible: boolean; message: string }>({
     visible: false,
     message: '',
@@ -88,6 +94,36 @@ export default function ProfileScreen() {
     console.log('User tapped Theme Toggle button');
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
     toggleTheme();
+  };
+
+  const handleReseedDatabase = async () => {
+    console.log('[API] Reseeding food database with correct nutritional values');
+    setReseedingDatabase(true);
+    try {
+      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+      const result = await authenticatedPost<{ success: boolean; itemCount: number; message: string }>(
+        '/api/food/reseed-database',
+        {}
+      );
+      console.log('[API] Reseed database result:', result);
+      setReseedModal({
+        visible: true,
+        success: true,
+        message: result.message || `Food database reseeded successfully with ${result.itemCount} items.`,
+        itemCount: result.itemCount,
+      });
+      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+    } catch (error: any) {
+      console.error('[API] Error reseeding database:', error);
+      setReseedModal({
+        visible: true,
+        success: false,
+        message: error.message || 'Failed to reseed the food database. Please try again.',
+      });
+      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
+    } finally {
+      setReseedingDatabase(false);
+    }
   };
 
   const getGoalLabel = (goal?: string) => {
@@ -345,6 +381,43 @@ export default function ProfileScreen() {
           </View>
         )}
 
+        {/* Developer Tools Section */}
+        <View style={dynamicStyles.section}>
+          <Text style={dynamicStyles.sectionTitle}>Developer Tools</Text>
+          <TouchableOpacity
+            style={[dynamicStyles.settingItem, { opacity: reseedingDatabase ? 0.6 : 1 }]}
+            onPress={handleReseedDatabase}
+            disabled={reseedingDatabase}
+          >
+            <View style={dynamicStyles.settingLeft}>
+              {reseedingDatabase ? (
+                <ActivityIndicator size="small" color={colors.primary} />
+              ) : (
+                <IconSymbol
+                  ios_icon_name="arrow.triangle.2.circlepath"
+                  android_material_icon_name="sync"
+                  size={24}
+                  color={colors.primary}
+                />
+              )}
+              <View>
+                <Text style={dynamicStyles.settingText}>Reseed Food Database</Text>
+                <Text style={[dynamicStyles.settingValue, { fontSize: 11, marginTop: 2 }]}>
+                  Fix nutritional values (calories, protein, carbs, fat)
+                </Text>
+              </View>
+            </View>
+            {!reseedingDatabase && (
+              <IconSymbol
+                ios_icon_name="chevron.right"
+                android_material_icon_name="chevron-right"
+                size={20}
+                color={colors.textSecondary}
+              />
+            )}
+          </TouchableOpacity>
+        </View>
+
         {/* About Section */}
         <View style={dynamicStyles.section}>
           <Text style={dynamicStyles.sectionTitle}>About</Text>
@@ -414,6 +487,44 @@ export default function ProfileScreen() {
             <TouchableOpacity
               style={dynamicStyles.errorModalButton}
               onPress={() => setErrorModal({ ...errorModal, visible: false })}
+            >
+              <Text style={dynamicStyles.errorModalButtonText}>OK</Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+      </Modal>
+
+      {/* Reseed Database Result Modal */}
+      <Modal
+        visible={reseedModal.visible}
+        animationType="fade"
+        transparent={true}
+        onRequestClose={() => setReseedModal({ ...reseedModal, visible: false })}
+      >
+        <View style={dynamicStyles.modalOverlay}>
+          <View style={dynamicStyles.errorModal}>
+            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10, marginBottom: 12 }}>
+              <IconSymbol
+                ios_icon_name={reseedModal.success ? 'checkmark.circle.fill' : 'xmark.circle.fill'}
+                android_material_icon_name={reseedModal.success ? 'check-circle' : 'cancel'}
+                size={28}
+                color={reseedModal.success ? colors.success : colors.error}
+              />
+              <Text style={dynamicStyles.errorModalTitle}>
+                {reseedModal.success ? 'Database Reseeded' : 'Reseed Failed'}
+              </Text>
+            </View>
+            <Text style={dynamicStyles.errorModalMessage}>{reseedModal.message}</Text>
+            {reseedModal.success && reseedModal.itemCount !== undefined && (
+              <View style={{ backgroundColor: `${colors.success}15`, borderRadius: 10, padding: 12, marginBottom: 16 }}>
+                <Text style={{ fontSize: 14, color: colors.text, textAlign: 'center' }}>
+                  ✅ {reseedModal.itemCount} food items now have correct nutritional values
+                </Text>
+              </View>
+            )}
+            <TouchableOpacity
+              style={[dynamicStyles.errorModalButton, { backgroundColor: reseedModal.success ? colors.success : colors.error }]}
+              onPress={() => setReseedModal({ ...reseedModal, visible: false })}
             >
               <Text style={dynamicStyles.errorModalButtonText}>OK</Text>
             </TouchableOpacity>
