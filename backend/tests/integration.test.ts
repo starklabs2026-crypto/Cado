@@ -687,6 +687,19 @@ describe("API Integration Tests", () => {
     await expectStatus(res, 401);
   });
 
+  // ===== Food Database Admin Tests =====
+
+  test("Reseed food database", async () => {
+    const res = await api("/api/food/reseed-database", {
+      method: "POST",
+    });
+    await expectStatus(res, 200);
+    const data = await res.json();
+    expect(data.success).toBe(true);
+    expect(typeof data.itemCount).toBe("number");
+    expect(data.message).toBeDefined();
+  });
+
   // ===== Groups Tests =====
 
   test("Sign up second test user for group tests", async () => {

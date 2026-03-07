@@ -1521,5 +1521,147 @@ Return values for the portion shown in the image, not per 100g.`,
       goalWeight,
     };
   });
+
+  // POST /api/food/reseed-database - Reseed the food database (development only)
+  app.fastify.post(
+    '/api/food/reseed-database',
+    {
+      schema: {
+        description: 'Reseed the food database with correct nutritional values (development/admin only)',
+        tags: ['food-database'],
+        response: {
+          200: {
+            type: 'object',
+            properties: {
+              success: { type: 'boolean' },
+              itemCount: { type: 'number' },
+              message: { type: 'string' },
+            },
+          },
+          500: {
+            type: 'object',
+            properties: { error: { type: 'string' } },
+          },
+        },
+      },
+    },
+    async (request: FastifyRequest, reply: FastifyReply) => {
+      app.logger.info('Reseed endpoint called');
+
+      try {
+        // Clear existing food database
+        app.logger.info('Clearing existing food database');
+        await app.db.delete(schema.foodDatabase);
+
+        // Generate food data
+        const generateFoodDatabase = () => {
+          const foods: any[] = [];
+
+          // Common Foods (24 items) - Essential foods with guaranteed nutrition values
+          const commonFoods = [
+            { name: 'White Rice (cooked)', cal: 130, protein: 2.7, carbs: 28, fat: 0.3, serving: 100, unit: 'g', aliases: ['rice', 'white rice'] },
+            { name: 'Chicken Breast (cooked)', cal: 165, protein: 31, carbs: 0, fat: 3.6, serving: 100, unit: 'g', aliases: ['chicken', 'chicken breast'] },
+            { name: 'Ground Beef (cooked)', cal: 217, protein: 26, carbs: 0, fat: 11, serving: 100, unit: 'g', aliases: ['ground beef', 'beef'] },
+            { name: 'Salmon (cooked)', cal: 280, protein: 25, carbs: 0, fat: 20, serving: 100, unit: 'g', aliases: ['salmon', 'fish'] },
+            { name: 'Egg (large, boiled)', cal: 78, protein: 6.3, carbs: 0.6, fat: 5.3, serving: 50, unit: 'piece', aliases: ['egg', 'boiled egg'] },
+            { name: 'Milk (2% fat)', cal: 61, protein: 3.2, carbs: 4.8, fat: 2, serving: 200, unit: 'ml', aliases: ['milk'] },
+            { name: 'Vanilla Ice Cream', cal: 207, protein: 3.5, carbs: 24, fat: 11, serving: 100, unit: 'g', aliases: ['ice cream', 'vanilla'] },
+            { name: 'Broccoli (cooked)', cal: 34, protein: 2.8, carbs: 7, fat: 0.4, serving: 100, unit: 'g', aliases: ['broccoli'] },
+            { name: 'Spinach (raw)', cal: 23, protein: 2.9, carbs: 3.6, fat: 0.4, serving: 100, unit: 'g', aliases: ['spinach'] },
+            { name: 'Tomato (raw)', cal: 18, protein: 0.9, carbs: 3.9, fat: 0.2, serving: 100, unit: 'g', aliases: ['tomato'] },
+            { name: 'Potato (cooked)', cal: 77, protein: 1.7, carbs: 17, fat: 0.1, serving: 100, unit: 'g', aliases: ['potato'] },
+            { name: 'Lentils (cooked)', cal: 116, protein: 9.0, carbs: 20, fat: 0.4, serving: 100, unit: 'g', aliases: ['lentils'] },
+            { name: 'Pasta (cooked)', cal: 131, protein: 5, carbs: 25, fat: 1.1, serving: 100, unit: 'g', aliases: ['pasta'] },
+            { name: 'Yogurt (plain)', cal: 59, protein: 10, carbs: 3.3, fat: 0.4, serving: 100, unit: 'g', aliases: ['yogurt'] },
+            { name: 'Cheddar Cheese', cal: 403, protein: 23, carbs: 1.3, fat: 33, serving: 30, unit: 'g', aliases: ['cheese'] },
+            { name: 'Pizza (Cheese, 1 slice)', cal: 285, protein: 12, carbs: 36, fat: 10, serving: 150, unit: 'g', aliases: ['pizza'] },
+            { name: 'Milk Tea (Regular, 200ml)', cal: 80, protein: 2, carbs: 12, fat: 2, serving: 200, unit: 'ml', aliases: ['milk tea', 'tea'] },
+            { name: 'Biryani (Chicken)', cal: 280, protein: 12, carbs: 38, fat: 8, serving: 250, unit: 'g', aliases: ['biryani'] },
+            { name: 'Butter Chicken', cal: 320, protein: 20, carbs: 8, fat: 18, serving: 200, unit: 'g', aliases: ['butter chicken'] },
+            { name: 'Dosa', cal: 150, protein: 5, carbs: 20, fat: 4, serving: 150, unit: 'g', aliases: ['dosa'] },
+            { name: 'Olive Oil', cal: 884, protein: 0, carbs: 0, fat: 100, serving: 15, unit: 'ml', aliases: ['olive oil'] },
+            { name: 'Peanut Butter', cal: 588, protein: 25, carbs: 20, fat: 50, serving: 32, unit: 'g', aliases: ['peanut butter'] },
+            { name: 'Honey', cal: 304, protein: 0.3, carbs: 82, fat: 0, serving: 21, unit: 'g', aliases: ['honey'] },
+            { name: 'Sweet Potato (cooked)', cal: 86, protein: 1.6, carbs: 20, fat: 0.1, serving: 100, unit: 'g', aliases: ['sweet potato'] },
+          ];
+
+          commonFoods.forEach(item => {
+            foods.push({
+              name: item.name,
+              category: item.name.includes('Rice') ? 'grains' :
+                       item.name.includes('Chicken') || item.name.includes('Beef') || item.name.includes('Fish') || item.name.includes('Egg') ? 'protein' :
+                       item.name.includes('Milk') || item.name.includes('Cheese') || item.name.includes('Yogurt') || item.name.includes('Ice Cream') ? 'dairy' :
+                       item.name.includes('Pizza') ? 'fast_food' :
+                       item.name.includes('Biryani') || item.name.includes('Butter Chicken') || item.name.includes('Dosa') ? 'indian' :
+                       item.name.includes('Tea') ? 'beverage' :
+                       item.name.includes('Broccoli') || item.name.includes('Spinach') || item.name.includes('Tomato') || item.name.includes('Potato') ? 'vegetable' :
+                       item.name.includes('Lentils') ? 'legumes' : 'other',
+              cal: item.cal,
+              protein: item.protein,
+              carbs: item.carbs,
+              fat: item.fat,
+              serving: item.serving,
+              aliases: item.aliases,
+              unit: item.unit,
+            });
+          });
+
+          return foods;
+        };
+
+        const foodData = generateFoodDatabase();
+        app.logger.info({ itemCount: foodData.length }, 'Reseeding food database');
+
+        // Insert all food items
+        let insertedCount = 0;
+        for (const food of foodData) {
+          await app.db
+            .insert(schema.foodDatabase)
+            .values({
+              name: food.name,
+              category: food.category,
+              calories: food.cal,
+              protein: food.protein,
+              carbs: food.carbs,
+              fat: food.fat,
+              servingSize: food.serving,
+              servingUnit: food.unit || 'g',
+              aliases: food.aliases,
+              description: null,
+            });
+          insertedCount++;
+        }
+
+        // Verify insertion
+        const verifyCount = await app.db
+          .select()
+          .from(schema.foodDatabase)
+          .limit(5);
+
+        app.logger.info(
+          {
+            insertedCount,
+            sample: verifyCount.map(f => ({
+              name: f.name,
+              calories: f.calories,
+              protein: f.protein,
+              carbs: f.carbs,
+              fat: f.fat,
+            }))
+          },
+          'Food database reseeded successfully'
+        );
+
+        return reply.status(200).send({
+          success: true,
+          itemCount: insertedCount,
+          message: 'Food database reseeded successfully with correct nutritional values',
+        });
+      } catch (error) {
+        app.logger.error({ err: error }, 'Failed to reseed food database');
+        return reply.status(500).send({ error: 'Failed to reseed food database' });
+      }
+    }
+  );
 }
 

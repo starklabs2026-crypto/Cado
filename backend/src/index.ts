@@ -26,8 +26,16 @@ async function seedFoodDatabase() {
       .from(appSchema.foodDatabase)
       .limit(1);
 
-    if (existing.length > 0) {
-      app.logger.info('Food database already populated, skipping seed');
+    // Check if existing data has zero calories (indicating a bad seed)
+    let shouldReseed = existing.length === 0;
+    if (existing.length > 0 && existing[0].calories === 0) {
+      app.logger.warn('Found food database with zero calories, clearing for reseed');
+      await app.db.delete(appSchema.foodDatabase);
+      shouldReseed = true;
+    }
+
+    if (!shouldReseed) {
+      app.logger.info('Food database already populated with valid data, skipping seed');
       return;
     }
 
@@ -513,24 +521,75 @@ async function seedFoodDatabase() {
 
     app.logger.info({ itemCount: foodData.length }, 'Starting food database seed with comprehensive database');
 
-    for (const food of foodData) {
-      await app.db
-        .insert(appSchema.foodDatabase)
-        .values({
-          name: food.name,
-          category: food.category,
-          calories: food.cal,
-          protein: food.protein,
-          carbs: food.carbs,
-          fat: food.fat,
-          servingSize: food.serving,
-          servingUnit: food.unit || 'g',
-          aliases: food.aliases,
-          description: null,
-        });
+    // Log sample of food data before insertion
+    if (foodData.length > 0) {
+      app.logger.info(
+        {
+          samples: foodData.slice(0, 5).map(f => ({
+            name: f.name,
+            calories: f.cal,
+            protein: f.protein,
+            carbs: f.carbs,
+            fat: f.fat,
+            serving: f.serving,
+            unit: f.unit
+          }))
+        },
+        'Sample food items before insertion'
+      );
     }
 
-    app.logger.info({ itemCount: foodData.length }, 'Food database seeded successfully');
+    // Insert in batches to improve performance
+    const batchSize = 100;
+    let insertedCount = 0;
+
+    for (let i = 0; i < foodData.length; i += batchSize) {
+      const batch = foodData.slice(i, i + batchSize);
+      try {
+        await app.db
+          .insert(appSchema.foodDatabase)
+          .values(batch.map(food => ({
+            name: food.name,
+            category: food.category,
+            calories: food.cal,
+            protein: food.protein,
+            carbs: food.carbs,
+            fat: food.fat,
+            servingSize: food.serving,
+            servingUnit: food.unit || 'g',
+            aliases: food.aliases,
+            description: null,
+          })));
+        insertedCount += batch.length;
+        app.logger.debug({ inserted: insertedCount, total: foodData.length }, 'Batch insert progress');
+      } catch (batchErr) {
+        app.logger.error({ err: batchErr, batchStart: i, batchEnd: i + batchSize }, 'Failed to insert batch');
+      }
+    }
+
+    // Verify insertion
+    const verifyCount = await app.db
+      .select()
+      .from(appSchema.foodDatabase)
+      .limit(1);
+
+    if (verifyCount.length > 0) {
+      app.logger.info(
+        {
+          itemCount: insertedCount,
+          verifyItem: {
+            name: verifyCount[0].name,
+            calories: verifyCount[0].calories,
+            protein: verifyCount[0].protein,
+            carbs: verifyCount[0].carbs,
+            fat: verifyCount[0].fat,
+          }
+        },
+        'Food database seeded successfully with verification'
+      );
+    } else {
+      app.logger.error({}, 'Food database seeding failed - no items found after insertion');
+    }
   } catch (error) {
     app.logger.error({ err: error }, 'Failed to auto-seed food database');
   }
