@@ -21,6 +21,7 @@ describe("API Integration Tests", () => {
   let invitationIdForRejection: string;
   let notificationId: string;
   let inviteToken: string;
+  let foodDatabaseId: string;
 
   test("Sign up test user", async () => {
     const { token, user } = await signUpTestUser();
@@ -572,6 +573,100 @@ describe("API Integration Tests", () => {
         imageUrl: "https://example.com/pasta.jpg",
       }),
     });
+    await expectStatus(res, 401);
+  });
+
+  // ===== Food Database Search Tests =====
+
+  test("Search food database with query", async () => {
+    const res = await authenticatedApi("/api/food/search", authToken, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        query: "chicken",
+      }),
+    });
+    await expectStatus(res, 200);
+    const data = await res.json();
+    expect(Array.isArray(data)).toBe(true);
+    if (data.length > 0) {
+      foodDatabaseId = data[0].id;
+      expect(data[0].id).toBeDefined();
+      expect(data[0].name).toBeDefined();
+      expect(typeof data[0].calories).toBe("number");
+    }
+  });
+
+  test("Search food database with category filter", async () => {
+    const res = await authenticatedApi("/api/food/search", authToken, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        query: "pizza",
+        category: "fast_food",
+      }),
+    });
+    await expectStatus(res, 200);
+    const data = await res.json();
+    expect(Array.isArray(data)).toBe(true);
+  });
+
+  test("Search food database without required query returns 400", async () => {
+    const res = await authenticatedApi("/api/food/search", authToken, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        // missing query
+      }),
+    });
+    await expectStatus(res, 400);
+  });
+
+  test("Search food database without auth returns 401", async () => {
+    const res = await api("/api/food/search", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        query: "chicken",
+      }),
+    });
+    await expectStatus(res, 401);
+  });
+
+  // ===== Food Database Get Tests =====
+
+  test("Get food from database by ID", async () => {
+    if (foodDatabaseId) {
+      const res = await authenticatedApi(
+        `/api/food/database/${foodDatabaseId}`,
+        authToken
+      );
+      await expectStatus(res, 200);
+      const data = await res.json();
+      expect(data.id).toBeDefined();
+      expect(data.name).toBeDefined();
+      expect(typeof data.caloriesPer100g).toBe("number");
+    }
+  });
+
+  test("Get food from database with non-existent ID returns 404", async () => {
+    const res = await authenticatedApi(
+      "/api/food/database/00000000-0000-0000-0000-000000000000",
+      authToken
+    );
+    await expectStatus(res, 404);
+  });
+
+  test("Get food from database with invalid UUID format returns 400 or 404", async () => {
+    const res = await authenticatedApi(
+      "/api/food/database/invalid-uuid",
+      authToken
+    );
+    await expectStatus(res, 400, 404);
+  });
+
+  test("Get food from database without auth returns 401", async () => {
+    const res = await api("/api/food/database/00000000-0000-0000-0000-000000000000");
     await expectStatus(res, 401);
   });
 

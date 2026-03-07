@@ -1,6 +1,6 @@
 import type { App } from '../index.js';
 import type { FastifyInstance, FastifyRequest, FastifyReply } from 'fastify';
-import { eq, and, gte, lt } from 'drizzle-orm';
+import { eq, and, gte, lt, ilike, or } from 'drizzle-orm';
 import * as schema from '../db/schema/schema.js';
 import { gateway } from '@specific-dev/framework';
 import { generateObject } from 'ai';
@@ -32,6 +32,7 @@ interface FromImageBody {
   fat?: number;
   imageUrl: string;
   mealType?: string;
+  databaseFoodId?: string;
 }
 
 interface AnalyzeImageResponse {
@@ -42,26 +43,228 @@ interface AnalyzeImageResponse {
   fat: number;
   imageUrl: string;
   confidence: string;
+  databaseSuggestions?: Array<{
+    id: string;
+    name: string;
+    calories: number;
+    protein: number;
+    carbs: number;
+    fat: number;
+  }>;
+}
+
+interface FoodSearchResult {
+  id: string;
+  name: string;
+  category: string;
+  calories: number;
+  protein: number;
+  carbs: number;
+  fat: number;
+  servingSize: number;
 }
 
 const nutritionSchema = z.object({
   foodName: z.string().describe('Name of the identified food'),
-  calories: z.number().describe('Estimated calorie count'),
-  protein: z.number().describe('Estimated protein in grams'),
-  carbs: z.number().describe('Estimated carbs in grams'),
-  fat: z.number().describe('Estimated fat in grams'),
-  confidence: z.enum(['high', 'medium', 'low']).describe('Confidence level of the analysis'),
+  calories: z.number().describe('Estimated calorie count for the portion shown'),
+  protein: z.number().describe('Estimated protein in grams for the portion shown'),
+  carbs: z.number().describe('Estimated carbs in grams for the portion shown'),
+  fat: z.number().describe('Estimated fat in grams for the portion shown'),
+  confidence: z.enum(['high', 'medium', 'low']).describe('Confidence level: high=certain identification, medium=type clear, low=unclear/difficult to estimate'),
 });
+
+// Helper function for fuzzy search
+function calculateRelevance(query: string, foodName: string, aliases: string[] = []): number {
+  const lowerQuery = query.toLowerCase();
+  const lowerName = foodName.toLowerCase();
+
+  // Exact match = 3
+  if (lowerName === lowerQuery) return 3;
+  // Exact match in aliases = 2.9
+  if (aliases?.some(a => a.toLowerCase() === lowerQuery)) return 2.9;
+  // Starts with = 2
+  if (lowerName.startsWith(lowerQuery)) return 2;
+  // Alias starts with = 1.9
+  if (aliases?.some(a => a.toLowerCase().startsWith(lowerQuery))) return 1.9;
+  // Contains = 1
+  if (lowerName.includes(lowerQuery)) return 1;
+  // Alias contains = 0.9
+  if (aliases?.some(a => a.toLowerCase().includes(lowerQuery))) return 0.9;
+  return 0;
+}
 
 export function registerFoodEntryRoutes(app: App) {
   const requireAuth = app.requireAuth();
+
+  // POST /api/food/search - Search food database
+  app.fastify.post<{ Body: { query: string; category?: string } }>(
+    '/api/food/search',
+    {
+      schema: {
+        description: 'Search the food database with fuzzy matching',
+        tags: ['food-database'],
+        body: {
+          type: 'object',
+          required: ['query'],
+          properties: {
+            query: { type: 'string' },
+            category: { type: 'string', enum: ['indian', 'fast_food', 'beverage', 'ice_cream', 'dessert', 'other'] },
+          },
+        },
+        response: {
+          200: {
+            type: 'array',
+            items: {
+              type: 'object',
+              properties: {
+                id: { type: 'string', format: 'uuid' },
+                name: { type: 'string' },
+                category: { type: 'string' },
+                calories: { type: 'number' },
+                protein: { type: 'number' },
+                carbs: { type: 'number' },
+                fat: { type: 'number' },
+                servingSize: { type: 'number' },
+              },
+            },
+          },
+          401: {
+            type: 'object',
+            properties: { error: { type: 'string' } },
+          },
+        },
+      },
+    },
+    async (request: FastifyRequest<{ Body: { query: string; category?: string } }>, reply: FastifyReply) => {
+      const session = await requireAuth(request, reply);
+      if (!session) return;
+
+      const { query, category } = request.body;
+      app.logger.info({ userId: session.user.id, query, category }, 'Searching food database');
+
+      // Build query conditions
+      const conditions = [
+        or(
+          ilike(schema.foodDatabase.name, `%${query}%`)
+        ),
+      ];
+
+      if (category) {
+        conditions.push(eq(schema.foodDatabase.category, category));
+      }
+
+      // Query database
+      const results = await app.db
+        .select()
+        .from(schema.foodDatabase)
+        .where(and(...conditions));
+
+      // Score results by relevance and sort
+      const scored = results
+        .map((item) => ({
+          item,
+          relevance: calculateRelevance(query, item.name, item.aliases || []),
+        }))
+        .filter((r) => r.relevance > 0)
+        .sort((a, b) => b.relevance - a.relevance);
+
+      const response: FoodSearchResult[] = scored.map((r) => ({
+        id: r.item.id,
+        name: r.item.name,
+        category: r.item.category,
+        calories: Math.round(r.item.caloriesPer100g * (r.item.servingSizeG / 100)),
+        protein: Math.round((r.item.proteinPer100g * (r.item.servingSizeG / 100)) * 10) / 10,
+        carbs: Math.round((r.item.carbsPer100g * (r.item.servingSizeG / 100)) * 10) / 10,
+        fat: Math.round((r.item.fatPer100g * (r.item.servingSizeG / 100)) * 10) / 10,
+        servingSize: r.item.servingSizeG,
+      }));
+
+      app.logger.info({ userId: session.user.id, resultCount: response.length }, 'Food search completed');
+      return response;
+    }
+  );
+
+  // GET /api/food/database/:id - Get food item by ID
+  app.fastify.get<{ Params: { id: string } }>(
+    '/api/food/database/:id',
+    {
+      schema: {
+        description: 'Get full nutritional info for a food item from database',
+        tags: ['food-database'],
+        params: {
+          type: 'object',
+          required: ['id'],
+          properties: {
+            id: { type: 'string', format: 'uuid' },
+          },
+        },
+        response: {
+          200: {
+            type: 'object',
+            properties: {
+              id: { type: 'string', format: 'uuid' },
+              name: { type: 'string' },
+              category: { type: 'string' },
+              caloriesPer100g: { type: 'number' },
+              proteinPer100g: { type: 'number' },
+              carbsPer100g: { type: 'number' },
+              fatPer100g: { type: 'number' },
+              servingSize: { type: 'number' },
+              description: { type: ['string', 'null'] },
+              aliases: { type: ['array', 'null'], items: { type: 'string' } },
+            },
+          },
+          401: {
+            type: 'object',
+            properties: { error: { type: 'string' } },
+          },
+          404: {
+            type: 'object',
+            properties: { error: { type: 'string' } },
+          },
+        },
+      },
+    },
+    async (request: FastifyRequest<{ Params: { id: string } }>, reply: FastifyReply) => {
+      const session = await requireAuth(request, reply);
+      if (!session) return;
+
+      const { id } = request.params;
+      app.logger.info({ userId: session.user.id, foodId: id }, 'Fetching food database item');
+
+      const food = await app.db
+        .select()
+        .from(schema.foodDatabase)
+        .where(eq(schema.foodDatabase.id, id))
+        .limit(1);
+
+      if (food.length === 0) {
+        app.logger.warn({ foodId: id }, 'Food item not found');
+        return reply.status(404).send({ error: 'Food item not found' });
+      }
+
+      const item = food[0];
+      return {
+        id: item.id,
+        name: item.name,
+        category: item.category,
+        caloriesPer100g: item.caloriesPer100g,
+        proteinPer100g: item.proteinPer100g,
+        carbsPer100g: item.carbsPer100g,
+        fatPer100g: item.fatPer100g,
+        servingSize: item.servingSizeG,
+        description: item.description,
+        aliases: item.aliases,
+      };
+    }
+  );
 
   // POST /api/food/analyze-image - Analyze food image with AI
   app.fastify.post(
     '/api/food/analyze-image',
     {
       schema: {
-        description: 'Analyze a food image and extract nutritional information using AI',
+        description: 'Analyze a food image and extract nutritional information using GPT-4 Vision AI',
         tags: ['food-ai'],
         response: {
           200: {
@@ -74,6 +277,20 @@ export function registerFoodEntryRoutes(app: App) {
               fat: { type: 'number' },
               imageUrl: { type: 'string' },
               confidence: { type: 'string', enum: ['high', 'medium', 'low'] },
+              databaseSuggestions: {
+                type: ['array', 'null'],
+                items: {
+                  type: 'object',
+                  properties: {
+                    id: { type: 'string', format: 'uuid' },
+                    name: { type: 'string' },
+                    calories: { type: 'number' },
+                    protein: { type: 'number' },
+                    carbs: { type: 'number' },
+                    fat: { type: 'number' },
+                  },
+                },
+              },
             },
           },
           400: {
@@ -143,12 +360,12 @@ export function registerFoodEntryRoutes(app: App) {
       // Convert image to base64 for AI analysis
       const base64 = buffer.toString('base64');
 
-      // Use Gemini to analyze the food image
+      // Use GPT-4 Vision to analyze the food image
       let nutritionData: z.infer<typeof nutritionSchema>;
       try {
-        app.logger.info({ userId: session.user.id }, 'Calling Gemini to analyze food image');
+        app.logger.info({ userId: session.user.id }, 'Calling GPT-4 Vision to analyze food image');
         const result = await generateObject({
-          model: gateway('google/gemini-3-flash'),
+          model: gateway('openai/gpt-4o'),
           schema: nutritionSchema,
           schemaName: 'FoodNutrition',
           schemaDescription: 'Extract nutritional information from a food image',
@@ -162,11 +379,25 @@ export function registerFoodEntryRoutes(app: App) {
                 },
                 {
                   type: 'text',
-                  text: `Expert food nutritionist. Identify: DESSERTS (ice cream, cakes), INDIAN (biryani, butter chicken, samosa, bhujia, sev, dosa, idli, gulab jamun), FAST FOOD (burgers, pizza, fries).
-Key rules: (1) Use authentic names - NOT "crispy noodles" for bhujia, NOT "unknown item" for ice cream. (2) Identify ice cream flavor, Indian snacks by regional name. (3) Nutrition: Ice cream 200-300 cal/100g, Bhujia 500-550 cal/100g, Samosa 250-350 cal/piece, Burger 500-800 cal, Pizza 250-300 cal/slice.
-Confidence: HIGH=certain with specific name; MEDIUM=type clear but portion estimated; LOW=unclear/unanalyzable.
-For test images: return defaults with LOW confidence.
-Return JSON only: { foodName, calories, protein, carbs, fat, confidence }.`,
+                  text: `You are an expert food nutritionist and dietary analyst. Analyze this food image and provide accurate nutritional information.
+
+IMPORTANT CATEGORIES TO HANDLE:
+- INDIAN FOODS: biryani, butter chicken, samosa, bhujia, sev, dosa, idli, gulab jamun, paneer tikka, naan, roti, dal, curry varieties, pakora, jalebi, rasgulla, etc.
+- FAST FOOD: burgers, pizza, fries, nuggets, sandwiches, wraps, tacos
+- BEVERAGES: sodas, juices, smoothies, coffee drinks, tea, energy drinks, milkshakes
+- ICE CREAM: vanilla, chocolate, strawberry, mango, butterscotch, and other flavors
+- DESSERTS: cakes, cookies, brownies, pastries, donuts
+
+INSTRUCTIONS:
+1. Identify the SPECIFIC food name (e.g., "Butter Chicken" not just "curry", "Samosa" not "Indian snack")
+2. Estimate portion size shown in the image
+3. Provide nutritional values for the PORTION shown
+4. Set confidence based on:
+   - HIGH: Clear identification with visible portion, typical preparation method
+   - MEDIUM: Type is clear but portion or exact preparation unclear
+   - LOW: Cannot clearly identify or estimate portions accurately
+
+Return values for the portion shown in the image, not per 100g.`,
                 },
               ],
             },
@@ -174,12 +405,11 @@ Return JSON only: { foodName, calories, protein, carbs, fat, confidence }.`,
         });
         nutritionData = result.object;
         app.logger.info(
-          { userId: session.user.id, foodName: nutritionData.foodName, calories: nutritionData.calories },
-          'Food image analyzed successfully'
+          { userId: session.user.id, foodName: nutritionData.foodName, calories: nutritionData.calories, confidence: nutritionData.confidence },
+          'Food image analyzed with GPT-4 Vision'
         );
       } catch (err) {
         app.logger.warn({ userId: session.user.id, err }, 'AI analysis failed, using default values');
-        // Return sensible defaults when Gemini analysis fails (e.g., for test images or unsupported formats)
         nutritionData = {
           foodName: 'Unknown Food',
           calories: 150,
@@ -190,10 +420,51 @@ Return JSON only: { foodName, calories, protein, carbs, fat, confidence }.`,
         };
       }
 
-      return {
+      // If confidence is low, search database for best matches
+      let databaseSuggestions: AnalyzeImageResponse['databaseSuggestions'] = undefined;
+      if (nutritionData.confidence === 'low' && nutritionData.foodName !== 'Unknown Food') {
+        try {
+          app.logger.info({ foodName: nutritionData.foodName }, 'Searching database for low-confidence result');
+          const matches = await app.db
+            .select()
+            .from(schema.foodDatabase)
+            .where(ilike(schema.foodDatabase.name, `%${nutritionData.foodName}%`));
+
+          const scored = matches
+            .map((item) => ({
+              item,
+              relevance: calculateRelevance(nutritionData.foodName, item.name, item.aliases || []),
+            }))
+            .filter((r) => r.relevance > 0)
+            .sort((a, b) => b.relevance - a.relevance)
+            .slice(0, 3);
+
+          if (scored.length > 0) {
+            databaseSuggestions = scored.map((r) => ({
+              id: r.item.id,
+              name: r.item.name,
+              calories: Math.round(r.item.caloriesPer100g * (r.item.servingSizeG / 100)),
+              protein: Math.round((r.item.proteinPer100g * (r.item.servingSizeG / 100)) * 10) / 10,
+              carbs: Math.round((r.item.carbsPer100g * (r.item.servingSizeG / 100)) * 10) / 10,
+              fat: Math.round((r.item.fatPer100g * (r.item.servingSizeG / 100)) * 10) / 10,
+            }));
+            app.logger.info({ suggestions: databaseSuggestions.length }, 'Database suggestions found');
+          }
+        } catch (dbErr) {
+          app.logger.warn({ err: dbErr }, 'Failed to fetch database suggestions');
+        }
+      }
+
+      const response: AnalyzeImageResponse = {
         ...nutritionData,
         imageUrl,
-      } as AnalyzeImageResponse;
+      };
+
+      if (databaseSuggestions) {
+        response.databaseSuggestions = databaseSuggestions;
+      }
+
+      return response;
     }
   );
 
@@ -215,6 +486,7 @@ Return JSON only: { foodName, calories, protein, carbs, fat, confidence }.`,
             fat: { type: 'number' },
             imageUrl: { type: 'string' },
             mealType: { type: 'string' },
+            databaseFoodId: { type: 'string', format: 'uuid', description: 'Optional: ID of food from database to use instead of AI values' },
           },
         },
         response: {
@@ -249,21 +521,46 @@ Return JSON only: { foodName, calories, protein, carbs, fat, confidence }.`,
       const session = await requireAuth(request, reply);
       if (!session) return;
 
-      const { foodName, calories, protein, carbs, fat, imageUrl, mealType } = request.body;
+      const { foodName, calories, protein, carbs, fat, imageUrl, mealType, databaseFoodId } = request.body;
       app.logger.info(
-        { userId: session.user.id, foodName, calories, imageUrl },
+        { userId: session.user.id, foodName, calories, imageUrl, databaseFoodId },
         'Creating food entry from image analysis'
       );
+
+      // If databaseFoodId is provided, use data from database
+      let finalCalories = calories;
+      let finalProtein = protein;
+      let finalCarbs = carbs;
+      let finalFat = fat;
+      let finalFoodName = foodName;
+
+      if (databaseFoodId) {
+        const dbFood = await app.db
+          .select()
+          .from(schema.foodDatabase)
+          .where(eq(schema.foodDatabase.id, databaseFoodId))
+          .limit(1);
+
+        if (dbFood.length > 0) {
+          const food = dbFood[0];
+          finalFoodName = food.name;
+          finalCalories = Math.round(food.caloriesPer100g * (food.servingSizeG / 100));
+          finalProtein = Math.round((food.proteinPer100g * (food.servingSizeG / 100)) * 10) / 10;
+          finalCarbs = Math.round((food.carbsPer100g * (food.servingSizeG / 100)) * 10) / 10;
+          finalFat = Math.round((food.fatPer100g * (food.servingSizeG / 100)) * 10) / 10;
+          app.logger.info({ databaseFoodId, finalFoodName }, 'Using database food data');
+        }
+      }
 
       const newEntry = await app.db
         .insert(schema.foodEntries)
         .values({
           userId: session.user.id,
-          foodName,
-          calories,
-          protein: protein !== undefined ? protein : null,
-          carbs: carbs !== undefined ? carbs : null,
-          fat: fat !== undefined ? fat : null,
+          foodName: finalFoodName,
+          calories: finalCalories,
+          protein: finalProtein !== undefined ? finalProtein : null,
+          carbs: finalCarbs !== undefined ? finalCarbs : null,
+          fat: finalFat !== undefined ? finalFat : null,
           mealType: mealType !== undefined ? mealType : null,
           imageUrl,
           recognizedByAi: true,

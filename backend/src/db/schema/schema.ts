@@ -1,4 +1,4 @@
-import { pgTable, uuid, text, integer, real, timestamp, boolean, date, uniqueIndex } from 'drizzle-orm/pg-core';
+import { pgTable, uuid, text, integer, real, timestamp, boolean, date, uniqueIndex, index } from 'drizzle-orm/pg-core';
 import { user } from './auth-schema.js';
 
 export const foodEntries = pgTable('food_entries', {
@@ -88,3 +88,20 @@ export const groupMessages = pgTable('group_messages', {
   content: text('content').notNull(),
   createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
 });
+
+export const foodDatabase = pgTable('food_database', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  name: text('name').notNull(),
+  category: text('category').notNull(), // 'indian', 'fast_food', 'beverage', 'ice_cream', 'dessert', 'other'
+  caloriesPer100g: real('calories_per_100g').notNull(),
+  proteinPer100g: real('protein_per_100g').notNull(),
+  carbsPer100g: real('carbs_per_100g').notNull(),
+  fatPer100g: real('fat_per_100g').notNull(),
+  servingSizeG: real('serving_size_g').default(100).notNull(),
+  description: text('description'),
+  aliases: text('aliases').array(), // array of search variations
+  createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+}, (table) => ({
+  nameIdx: index('food_database_name_idx').on(table.name),
+  categoryIdx: index('food_database_category_idx').on(table.category),
+}));
