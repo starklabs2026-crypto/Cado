@@ -79,6 +79,13 @@ export const apiCall = async <T = any>(
         throw new Error(`Access denied. You don't have permission to perform this action.`);
       } else if (response.status === 429) {
         throw new Error(`Too many requests. Please wait a moment and try again.`);
+      } else if (response.status === 525 || response.status === 526) {
+        if (retryCount < MAX_RETRIES) {
+          console.log(`[API] SSL handshake error (${response.status}), retrying in ${RETRY_DELAY * 2}ms...`);
+          await delay(RETRY_DELAY * 2 * (retryCount + 1));
+          return apiCall<T>(endpoint, options, retryCount + 1);
+        }
+        throw new Error(`Connection error. Please check your internet connection and try again.`);
       } else if (response.status >= 500) {
         if (retryCount < MAX_RETRIES) {
           console.log(`[API] Server error, retrying in ${RETRY_DELAY}ms...`);
@@ -97,30 +104,36 @@ export const apiCall = async <T = any>(
   } catch (error) {
     console.error("[API] Request failed:", error);
     
-    if (error instanceof TypeError && error.message.includes("Network request failed")) {
+    if (error instanceof TypeError && (
+      error.message.includes("Network request failed") || 
+      error.message.includes("Failed to fetch") ||
+      error.message.includes("network error")
+    )) {
       if (retryCount < MAX_RETRIES) {
-        console.log(`[API] Network error, retrying in ${RETRY_DELAY}ms...`);
-        await delay(RETRY_DELAY * (retryCount + 1));
+        console.log(`[API] Network error, retrying in ${RETRY_DELAY * 2}ms...`);
+        await delay(RETRY_DELAY * 2 * (retryCount + 1));
         return apiCall<T>(endpoint, options, retryCount + 1);
       }
       
-      if (Platform.OS === "ios") {
-        throw new Error("Unable to connect to server. Please check your internet connection and try again. If using Expo Go, try restarting the app.");
-      }
       throw new Error("Unable to connect to server. Please check your internet connection and try again.");
     }
     
-    if (error instanceof Error && (error.message.includes("525") || error.message.includes("SSL") || error.message.includes("certificate"))) {
+    if (error instanceof Error && (
+      error.message.includes("525") || 
+      error.message.includes("526") ||
+      error.message.includes("SSL") || 
+      error.message.includes("certificate") ||
+      error.message.includes("handshake") ||
+      error.message.includes("TLS") ||
+      error.message.includes("CERT")
+    )) {
       if (retryCount < MAX_RETRIES) {
-        console.log(`[API] SSL error, retrying in ${RETRY_DELAY}ms...`);
-        await delay(RETRY_DELAY * (retryCount + 1));
+        console.log(`[API] SSL/TLS error detected, retrying in ${RETRY_DELAY * 3}ms...`);
+        await delay(RETRY_DELAY * 3 * (retryCount + 1));
         return apiCall<T>(endpoint, options, retryCount + 1);
       }
       
-      if (Platform.OS === "ios") {
-        throw new Error("Connection error. Please restart the app and try again.");
-      }
-      throw new Error("Server connection error. Please try again later.");
+      throw new Error("Connection security error. Please restart the app and try again. If the problem persists, check your network settings.");
     }
     
     throw error;

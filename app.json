@@ -1,3 +1,4 @@
+
 {
   "expo": {
     "name": "i-want-to-build-a-ca",
@@ -21,20 +22,34 @@
           "NSAllowsArbitraryLoads": true,
           "NSAllowsArbitraryLoadsInWebContent": true,
           "NSAllowsLocalNetworking": true,
+          "NSAllowsArbitraryLoadsForMedia": true,
           "NSExceptionDomains": {
             "specular.dev": {
               "NSExceptionAllowsInsecureHTTPLoads": true,
               "NSIncludesSubdomains": true,
               "NSExceptionRequiresForwardSecrecy": false,
               "NSExceptionMinimumTLSVersion": "TLSv1.0",
-              "NSThirdPartyExceptionAllowsInsecureHTTPLoads": true
+              "NSThirdPartyExceptionAllowsInsecureHTTPLoads": true,
+              "NSThirdPartyExceptionRequiresForwardSecrecy": false,
+              "NSThirdPartyExceptionMinimumTLSVersion": "TLSv1.0"
             },
             "app.specular.dev": {
               "NSExceptionAllowsInsecureHTTPLoads": true,
               "NSIncludesSubdomains": true,
               "NSExceptionRequiresForwardSecrecy": false,
               "NSExceptionMinimumTLSVersion": "TLSv1.0",
-              "NSThirdPartyExceptionAllowsInsecureHTTPLoads": true
+              "NSThirdPartyExceptionAllowsInsecureHTTPLoads": true,
+              "NSThirdPartyExceptionRequiresForwardSecrecy": false,
+              "NSThirdPartyExceptionMinimumTLSVersion": "TLSv1.0"
+            },
+            "cloudflare.com": {
+              "NSExceptionAllowsInsecureHTTPLoads": true,
+              "NSIncludesSubdomains": true,
+              "NSExceptionRequiresForwardSecrecy": false,
+              "NSExceptionMinimumTLSVersion": "TLSv1.0",
+              "NSThirdPartyExceptionAllowsInsecureHTTPLoads": true,
+              "NSThirdPartyExceptionRequiresForwardSecrecy": false,
+              "NSThirdPartyExceptionMinimumTLSVersion": "TLSv1.0"
             },
             "localhost": {
               "NSExceptionAllowsInsecureHTTPLoads": true,
@@ -71,7 +86,7 @@
       "expo-router",
       "expo-web-browser"
     ],
-    "scheme": "calo",
+    "scheme": "iwanttobuildaca",
     "experiments": {
       "typedRoutes": true
     },
