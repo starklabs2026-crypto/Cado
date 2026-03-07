@@ -18,7 +18,7 @@ type Mode = "signin" | "signup";
 
 export default function AuthScreen() {
   const router = useRouter();
-  const { signInWithEmail, signUpWithEmail, signInWithGoogle, signInWithApple, signInWithGitHub, loading: authLoading } =
+  const { signInWithEmail, signUpWithEmail, signInWithGoogle, signInWithApple, signInWithGitHub, signInAsGuest, loading: authLoading } =
     useAuth();
 
   const [mode, setMode] = useState<Mode>("signin");
@@ -84,6 +84,18 @@ export default function AuthScreen() {
       router.replace("/");
     } catch (error: any) {
       showError("Error", error.message || "Authentication failed");
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleGuestSignIn = async () => {
+    setLoading(true);
+    try {
+      await signInAsGuest();
+      router.replace("/");
+    } catch (error: any) {
+      showError("Error", error.message || "Failed to join as guest");
     } finally {
       setLoading(false);
     }
@@ -179,6 +191,24 @@ export default function AuthScreen() {
               </Text>
             </TouchableOpacity>
           )}
+
+          <View style={styles.guestDivider}>
+            <View style={styles.dividerLine} />
+            <Text style={styles.dividerText}>or</Text>
+            <View style={styles.dividerLine} />
+          </View>
+
+          <TouchableOpacity
+            style={styles.guestButton}
+            onPress={handleGuestSignIn}
+            disabled={loading}
+          >
+            <Text style={styles.guestButtonText}>Join as Guest</Text>
+          </TouchableOpacity>
+
+          <Text style={styles.guestNote}>
+            Guest accounts have limited features and are temporary
+          </Text>
         </View>
       </ScrollView>
 
@@ -323,6 +353,32 @@ const styles = StyleSheet.create({
   },
   appleButtonText: {
     color: "#fff",
+  },
+  guestDivider: {
+    flexDirection: "row",
+    alignItems: "center",
+    marginVertical: 16,
+  },
+  guestButton: {
+    height: 50,
+    borderWidth: 2,
+    borderColor: "#007AFF",
+    borderRadius: 8,
+    justifyContent: "center",
+    alignItems: "center",
+    backgroundColor: "#fff",
+  },
+  guestButtonText: {
+    fontSize: 16,
+    color: "#007AFF",
+    fontWeight: "600",
+  },
+  guestNote: {
+    marginTop: 12,
+    textAlign: "center",
+    fontSize: 12,
+    color: "#999",
+    paddingHorizontal: 20,
   },
   modalOverlay: {
     flex: 1,

@@ -128,7 +128,18 @@ export default function ProfileScreen() {
           </View>
           <Text style={styles.userName}>{userName}</Text>
           <Text style={styles.userEmail}>{userEmail}</Text>
-          {profile?.is_pro && (
+          {user?.isGuest && (
+            <View style={styles.guestBadge}>
+              <IconSymbol
+                ios_icon_name="person.crop.circle.badge.clock"
+                android_material_icon_name="schedule"
+                size={14}
+                color="#FFFFFF"
+              />
+              <Text style={styles.guestBadgeText}>GUEST</Text>
+            </View>
+          )}
+          {profile?.is_pro && !user?.isGuest && (
             <View style={styles.proBadge}>
               <IconSymbol
                 ios_icon_name="star.fill"
@@ -140,6 +151,27 @@ export default function ProfileScreen() {
             </View>
           )}
         </View>
+
+        {/* Guest Warning Card */}
+        {user?.isGuest && (
+          <View style={styles.guestWarningCard}>
+            <View style={styles.guestWarningHeader}>
+              <IconSymbol
+                ios_icon_name="exclamationmark.triangle.fill"
+                android_material_icon_name="warning"
+                size={24}
+                color="#FF9500"
+              />
+              <Text style={styles.guestWarningTitle}>Guest Account</Text>
+            </View>
+            <Text style={styles.guestWarningText}>
+              You're using a temporary guest account. Your data will be deleted after 7 days of inactivity. Sign up to save your progress!
+            </Text>
+            <TouchableOpacity style={styles.guestUpgradeButton} onPress={() => router.push('/auth')}>
+              <Text style={styles.guestUpgradeButtonText}>Create Account</Text>
+            </TouchableOpacity>
+          </View>
+        )}
 
         {/* Usage Card */}
         {!loadingProfile && usage && (
@@ -159,7 +191,7 @@ export default function ProfileScreen() {
                 <View
                   style={[
                     styles.usageBarFill,
-                    { width: `${Math.min((usage.scans_count / 3) * 100, 100)}%` },
+                    { width: `${Math.min((usage.scans_count / (user?.isGuest ? 3 : 10)) * 100, 100)}%` },
                   ]}
                 />
               </View>
@@ -167,7 +199,9 @@ export default function ProfileScreen() {
             <Text style={styles.usageDetail}>
               {usage.is_pro
                 ? `${usage.scans_count} scans today (Pro: unlimited)`
-                : `${usage.scans_count} of 3 free scans used today`}
+                : user?.isGuest
+                ? `${usage.scans_count} of 3 guest scans used today`
+                : `${usage.scans_count} of 10 free scans used today`}
             </Text>
           </View>
         )}
@@ -402,6 +436,57 @@ const styles = StyleSheet.create({
   proBadgeText: {
     fontSize: 12,
     fontWeight: '700',
+    color: '#FFFFFF',
+  },
+  guestBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#FF9500',
+    paddingHorizontal: 12,
+    paddingVertical: 4,
+    borderRadius: 20,
+    gap: 4,
+    marginTop: 4,
+  },
+  guestBadgeText: {
+    fontSize: 12,
+    fontWeight: '700',
+    color: '#FFFFFF',
+  },
+  guestWarningCard: {
+    backgroundColor: '#FFF3E0',
+    borderRadius: 16,
+    padding: 16,
+    marginBottom: 16,
+    borderWidth: 1,
+    borderColor: '#FFB74D',
+  },
+  guestWarningHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    marginBottom: 8,
+  },
+  guestWarningTitle: {
+    fontSize: 16,
+    fontWeight: '700',
+    color: '#E65100',
+  },
+  guestWarningText: {
+    fontSize: 14,
+    color: '#5D4037',
+    lineHeight: 20,
+    marginBottom: 12,
+  },
+  guestUpgradeButton: {
+    backgroundColor: '#FF9500',
+    borderRadius: 8,
+    padding: 12,
+    alignItems: 'center',
+  },
+  guestUpgradeButtonText: {
+    fontSize: 14,
+    fontWeight: '600',
     color: '#FFFFFF',
   },
   usageCard: {

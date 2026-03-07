@@ -2,12 +2,14 @@ import React, { createContext, useContext, useState, useEffect, ReactNode } from
 import { Platform } from "react-native";
 import * as Linking from "expo-linking";
 import { authClient, setBearerToken, clearAuthTokens } from "@/lib/auth";
+import { apiPost } from "@/utils/api";
 
 interface User {
   id: string;
   email: string;
   name?: string;
   image?: string;
+  isGuest?: boolean;
 }
 
 interface AuthContextType {
@@ -18,6 +20,7 @@ interface AuthContextType {
   signInWithGoogle: () => Promise<void>;
   signInWithApple: () => Promise<void>;
   signInWithGitHub: () => Promise<void>;
+  signInAsGuest: () => Promise<void>;
   signOut: () => Promise<void>;
   fetchUser: () => Promise<void>;
 }
@@ -186,6 +189,28 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const signInWithApple = () => signInWithSocial("apple");
   const signInWithGitHub = () => signInWithSocial("github");
 
+  const signInAsGuest = async () => {
+    try {
+      console.log("[Auth] Signing in as guest via POST /api/auth/guest");
+      const data = await apiPost<{ user: User; token: string }>("/api/auth/guest", {});
+
+      console.log("[Auth] Guest sign in response:", data);
+
+      // Store the token so authenticated API calls work
+      if (data.token) {
+        await setBearerToken(data.token);
+      }
+
+      // Set the guest user in state
+      if (data.user) {
+        setUser(data.user as User);
+      }
+    } catch (error) {
+      console.error("Guest sign in failed:", error);
+      throw error;
+    }
+  };
+
   const signOut = async () => {
     try {
       await authClient.signOut();
@@ -208,6 +233,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         signInWithGoogle,
         signInWithApple,
         signInWithGitHub,
+        signInAsGuest,
         signOut,
         fetchUser,
       }}
