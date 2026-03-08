@@ -1,3 +1,4 @@
+
 // Global error logging for runtime errors
 // Captures console.log/warn/error and sends to Natively server for AI debugging
 
@@ -17,6 +18,21 @@ const clearLogAfterDelay = (logKey: string) => {
 const MUTED_MESSAGES = [
   'each child in a list should have a unique "key" prop',
   'Each child in a list should have a unique "key" prop',
+  // AsyncStorage errors (harmless - app works fine without persistent storage)
+  'AsyncStorageError',
+  'AsyncStorage',
+  'Native module is null',
+  'cannot access legacy storage',
+  // Theme loading errors (harmless - falls back to default theme)
+  '[Theme] Error loading theme',
+  'Error loading theme',
+  '[Theme] Error saving theme',
+  'Error saving theme',
+  // Auth storage errors (harmless - handled gracefully)
+  'SecureStore',
+  'Error storing token',
+  'Error retrieving token',
+  'Error clearing token',
 ];
 
 // Check if a message should be muted
@@ -293,35 +309,39 @@ export const setupErrorLogging = () => {
 
   // Override console.log to capture and send to server
   console.log = (...args: any[]) => {
-    // Always call original first
+    // Check if message should be muted BEFORE calling original
+    const message = stringifyArgs(args);
+    if (shouldMuteMessage(message)) return;
+
+    // Call original
     originalConsoleLog.apply(console, args);
 
     // Queue log for sending to server
-    const message = stringifyArgs(args);
     const source = getCallerInfo();
     queueLog('log', message, source);
   };
 
   // Override console.warn to capture and send to server
   console.warn = (...args: any[]) => {
-    // Always call original first
-    originalConsoleWarn.apply(console, args);
-
-    // Queue log for sending to server (skip muted messages)
+    // Check if message should be muted BEFORE calling original
     const message = stringifyArgs(args);
     if (shouldMuteMessage(message)) return;
 
+    // Call original
+    originalConsoleWarn.apply(console, args);
+
+    // Queue log for sending to server
     const source = getCallerInfo();
     queueLog('warn', message, source);
   };
 
   // Override console.error to capture and send to server
   console.error = (...args: any[]) => {
-    // Queue log for sending to server (skip muted messages)
+    // Check if message should be muted BEFORE calling original
     const message = stringifyArgs(args);
     if (shouldMuteMessage(message)) return;
 
-    // Always call original first
+    // Call original
     originalConsoleError.apply(console, args);
 
     const source = getCallerInfo();
@@ -335,10 +355,15 @@ export const setupErrorLogging = () => {
   if (typeof window !== 'undefined') {
     // Override window.onerror to catch JavaScript errors
     window.onerror = (message, source, lineno, colno, error) => {
-      const sourceFile = source ? source.split('/').pop() : 'unknown';
-      const errorMessage = `RUNTIME ERROR: ${message} at ${sourceFile}:${lineno}:${colno}`;
+      const errorMessage = typeof message === 'string' ? message : String(message);
+      
+      // Check if error should be muted
+      if (shouldMuteMessage(errorMessage)) return false;
 
-      queueLog('error', errorMessage, `${sourceFile}:${lineno}:${colno}`);
+      const sourceFile = source ? source.split('/').pop() : 'unknown';
+      const fullErrorMessage = `RUNTIME ERROR: ${message} at ${sourceFile}:${lineno}:${colno}`;
+
+      queueLog('error', fullErrorMessage, `${sourceFile}:${lineno}:${colno}`);
       sendErrorToParent('error', 'JavaScript Runtime Error', {
         message,
         source: `${sourceFile}:${lineno}:${colno}`,
@@ -351,6 +376,11 @@ export const setupErrorLogging = () => {
     // Capture unhandled promise rejections (web only)
     if (Platform.OS === 'web') {
       window.addEventListener('unhandledrejection', (event) => {
+        const reasonMessage = String(event.reason);
+        
+        // Check if error should be muted
+        if (shouldMuteMessage(reasonMessage)) return;
+
         const message = `UNHANDLED PROMISE REJECTION: ${event.reason}`;
         queueLog('error', message, '');
         sendErrorToParent('error', 'Unhandled Promise Rejection', { reason: event.reason });

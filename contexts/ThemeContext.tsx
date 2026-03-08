@@ -29,11 +29,10 @@ export function ThemeProvider({ children }: { children: ReactNode }) {
       const savedTheme = await AsyncStorage.getItem(THEME_STORAGE_KEY);
       if (savedTheme === 'dark' || savedTheme === 'light') {
         setTheme(savedTheme);
-        console.log('[Theme] Loaded saved theme:', savedTheme);
       }
     } catch (error) {
-      console.error('[Theme] Error loading theme, using default:', error);
-      // Fallback to light theme if AsyncStorage fails
+      // Silently fall back to light theme if AsyncStorage fails
+      // This is expected behavior on some platforms
       setTheme('light');
     } finally {
       setIsLoading(false);
@@ -45,10 +44,9 @@ export function ThemeProvider({ children }: { children: ReactNode }) {
     setTheme(newTheme);
     try {
       await AsyncStorage.setItem(THEME_STORAGE_KEY, newTheme);
-      console.log('[Theme] Theme toggled to:', newTheme);
     } catch (error) {
-      console.error('[Theme] Error saving theme:', error);
-      // Still allow theme change even if save fails
+      // Silently continue - theme change still works in memory
+      // Storage is just a nice-to-have for persistence
     }
   };
 
