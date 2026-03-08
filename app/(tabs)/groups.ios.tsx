@@ -202,7 +202,7 @@ export default function GroupsScreen() {
       >
         {/* My Groups Section */}
         {myGroups.length > 0 && (
-          <>
+          <React.Fragment>
             <View style={styles.sectionHeader}>
               <Text style={styles.sectionTitle}>My Groups</Text>
             </View>
@@ -270,7 +270,7 @@ export default function GroupsScreen() {
                 </TouchableOpacity>
               );
             })}
-          </>
+          </React.Fragment>
         )}
 
         {/* Discover Groups Section */}
@@ -302,53 +302,55 @@ export default function GroupsScreen() {
             <Text style={styles.emptyStateSubtext}>Check back later for new groups</Text>
           </View>
         ) : (
-          discoverGroups.map((group) => {
-            const { countStr, membersText } = memberCountText(group.memberCount);
-            return (
-              <View key={group.id} style={styles.groupCard}>
-                <Image 
-                  source={{ uri: group.imageUrl }} 
-                  style={styles.groupImage}
-                />
-                
-                <View style={styles.groupContent}>
-                  <View style={styles.groupHeader}>
-                    <Text style={styles.groupName}>{group.name}</Text>
-                    <View style={styles.memberAvatars}>
-                      {group.memberAvatars.slice(0, 3).map((avatar, index) => (
-                        <Image 
-                          key={index}
-                          source={{ uri: avatar }} 
-                          style={[styles.memberAvatar, { marginLeft: index > 0 ? -8 : 0 }]}
-                        />
-                      ))}
-                    </View>
-                  </View>
-                  
-                  <View style={styles.memberCountContainer}>
-                    <Text style={styles.memberCount}>{countStr}</Text>
-                    <Text style={styles.memberCount}> </Text>
-                    <Text style={styles.memberCount}>{membersText}</Text>
-                  </View>
-                  
-                  <Text style={styles.groupDescription}>{group.description}</Text>
-                </View>
-
-                <TouchableOpacity 
-                  style={styles.joinButton}
-                  onPress={() => handleJoinGroup(group.id, group.name)}
-                >
-                  <IconSymbol 
-                    ios_icon_name="plus" 
-                    android_material_icon_name="add" 
-                    size={16} 
-                    color={colors.text} 
+          <React.Fragment>
+            {discoverGroups.map((group) => {
+              const { countStr, membersText } = memberCountText(group.memberCount);
+              return (
+                <View key={group.id} style={styles.groupCard}>
+                  <Image 
+                    source={{ uri: group.imageUrl }} 
+                    style={styles.groupImage}
                   />
-                  <Text style={styles.joinButtonText}>Join</Text>
-                </TouchableOpacity>
-              </View>
-            );
-          })
+                  
+                  <View style={styles.groupContent}>
+                    <View style={styles.groupHeader}>
+                      <Text style={styles.groupName}>{group.name}</Text>
+                      <View style={styles.memberAvatars}>
+                        {group.memberAvatars.slice(0, 3).map((avatar, index) => (
+                          <Image 
+                            key={`${group.id}-avatar-${index}`}
+                            source={{ uri: avatar }} 
+                            style={[styles.memberAvatar, { marginLeft: index > 0 ? -8 : 0 }]}
+                          />
+                        ))}
+                      </View>
+                    </View>
+                    
+                    <View style={styles.memberCountContainer}>
+                      <Text style={styles.memberCount}>{countStr}</Text>
+                      <Text style={styles.memberCount}> </Text>
+                      <Text style={styles.memberCount}>{membersText}</Text>
+                    </View>
+                    
+                    <Text style={styles.groupDescription}>{group.description}</Text>
+                  </View>
+
+                  <TouchableOpacity 
+                    style={styles.joinButton}
+                    onPress={() => handleJoinGroup(group.id, group.name)}
+                  >
+                    <IconSymbol 
+                      ios_icon_name="plus" 
+                      android_material_icon_name="add" 
+                      size={16} 
+                      color={colors.text} 
+                    />
+                    <Text style={styles.joinButtonText}>Join</Text>
+                  </TouchableOpacity>
+                </View>
+              );
+            })}
+          </React.Fragment>
         )}
 
         <View style={styles.bottomPadding} />

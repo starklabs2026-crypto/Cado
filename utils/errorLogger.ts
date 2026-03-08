@@ -21,11 +21,14 @@ const MUTED_MESSAGES = [
   'NSURLSession',
   'NSError',
   'CFNetwork',
-  'kCFStreamErrorDomainSSL',
+  'kCFStreamErrorDomain',
   'Connection security error',
   'Unable to connect to server',
   'Cloudflare',
   'Connection error',
+  '[API] Error loading',
+  'Authentication token not found',
+  'Please sign in',
 ];
 
 export function shouldMuteMessage(message: string): boolean {
