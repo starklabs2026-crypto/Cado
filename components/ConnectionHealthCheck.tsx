@@ -1,120 +1,96 @@
 
 import React, { useEffect, useState } from 'react';
-import { View, Text, StyleSheet, ActivityIndicator } from 'react-native';
-import { useNetworkState } from 'expo-network';
-import { isBackendConfigured, BACKEND_URL } from '@/utils/api';
+import { View, Text, StyleSheet, ActivityIndicator, TouchableOpacity } from 'react-native';
+import { useTheme } from '@/contexts/ThemeContext';
+import * as Network from 'expo-network';
 
 interface ConnectionHealthCheckProps {
-  onHealthy?: () => void;
-  onUnhealthy?: (error: string) => void;
+  children: React.ReactNode;
 }
 
-export function ConnectionHealthCheck({ onHealthy, onUnhealthy }: ConnectionHealthCheckProps) {
-  const { isConnected, isInternetReachable } = useNetworkState();
-  const [checking, setChecking] = useState(true);
-  const [status, setStatus] = useState<'checking' | 'healthy' | 'unhealthy'>('checking');
-  const [errorMessage, setErrorMessage] = useState<string>('');
-
-  useEffect(() => {
-    checkConnection();
-  }, [isConnected, isInternetReachable]);
+export function ConnectionHealthCheck({ children }: ConnectionHealthCheckProps) {
+  const { colors } = useTheme();
+  const [isConnected, setIsConnected] = useState(true);
+  const [isChecking, setIsChecking] = useState(true);
 
   const checkConnection = async () => {
-    setChecking(true);
-    setStatus('checking');
-
-    if (isConnected === false) {
-      const error = 'No internet connection';
-      setStatus('unhealthy');
-      setErrorMessage(error);
-      onUnhealthy?.(error);
-      setChecking(false);
-      return;
-    }
-
-    if (!isBackendConfigured()) {
-      const error = 'Backend URL not configured';
-      setStatus('unhealthy');
-      setErrorMessage(error);
-      onUnhealthy?.(error);
-      setChecking(false);
-      return;
-    }
-
     try {
-      const controller = new AbortController();
-      const timeoutId = setTimeout(() => controller.abort(), 5000);
-
-      const response = await fetch(`${BACKEND_URL}/api/auth/get-session`, {
-        method: 'GET',
-        signal: controller.signal,
-      });
-
-      clearTimeout(timeoutId);
-
-      if (response.ok || response.status === 401) {
-        setStatus('healthy');
-        setErrorMessage('');
-        onHealthy?.();
-      } else {
-        const error = `Server returned ${response.status}`;
-        setStatus('unhealthy');
-        setErrorMessage(error);
-        onUnhealthy?.(error);
-      }
+      setIsChecking(true);
+      const networkState = await Network.getNetworkStateAsync();
+      setIsConnected(networkState.isConnected ?? true);
     } catch (error) {
-      const errorMsg = error instanceof Error ? error.message : 'Connection failed';
-      setStatus('unhealthy');
-      setErrorMessage(errorMsg);
-      onUnhealthy?.(errorMsg);
+      console.log('[ConnectionHealthCheck] Error checking network:', error);
+      // Assume connected if we can't check
+      setIsConnected(true);
     } finally {
-      setChecking(false);
+      setIsChecking(false);
     }
   };
 
-  if (status === 'healthy') {
-    return null;
+  useEffect(() => {
+    checkConnection();
+    
+    // Check connection every 30 seconds
+    const interval = setInterval(checkConnection, 30000);
+    
+    return () => clearInterval(interval);
+  }, []);
+
+  if (isChecking) {
+    return (
+      <View style={[styles.container, { backgroundColor: colors.background }]}>
+        <ActivityIndicator size="large" color={colors.tint} />
+        <Text style={[styles.text, { color: colors.text }]}>Checking connection...</Text>
+      </View>
+    );
   }
 
-  return (
-    <View style={styles.container}>
-      {checking ? (
-        <>
-          <ActivityIndicator size="small" color="#10B981" />
-          <Text style={styles.text}>Checking connection...</Text>
-        </>
-      ) : (
-        <>
-          <Text style={styles.errorText}>⚠️ Connection Issue</Text>
-          <Text style={styles.errorDetail}>{errorMessage}</Text>
-        </>
-      )}
-    </View>
-  );
+  if (!isConnected) {
+    return (
+      <View style={[styles.container, { backgroundColor: colors.background }]}>
+        <Text style={[styles.title, { color: colors.text }]}>No Internet Connection</Text>
+        <Text style={[styles.text, { color: colors.text }]}>
+          Please check your internet connection and try again.
+        </Text>
+        <TouchableOpacity
+          style={[styles.button, { backgroundColor: colors.tint }]}
+          onPress={checkConnection}
+        >
+          <Text style={styles.buttonText}>Retry</Text>
+        </TouchableOpacity>
+      </View>
+    );
+  }
+
+  return <>{children}</>;
 }
 
 const styles = StyleSheet.create({
   container: {
-    padding: 16,
-    backgroundColor: '#1a1a1a',
-    borderRadius: 8,
-    margin: 16,
+    flex: 1,
+    justifyContent: 'center',
     alignItems: 'center',
+    padding: 20,
+  },
+  title: {
+    fontSize: 24,
+    fontWeight: 'bold',
+    marginBottom: 16,
+    textAlign: 'center',
   },
   text: {
-    color: '#fff',
-    marginTop: 8,
-    fontSize: 14,
+    fontSize: 16,
+    textAlign: 'center',
+    marginBottom: 24,
   },
-  errorText: {
-    color: '#FF3B30',
+  button: {
+    paddingHorizontal: 32,
+    paddingVertical: 12,
+    borderRadius: 8,
+  },
+  buttonText: {
+    color: '#FFFFFF',
     fontSize: 16,
     fontWeight: '600',
-    marginBottom: 8,
-  },
-  errorDetail: {
-    color: '#ccc',
-    fontSize: 14,
-    textAlign: 'center',
   },
 });

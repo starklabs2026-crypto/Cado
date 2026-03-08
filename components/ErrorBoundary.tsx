@@ -1,11 +1,10 @@
 
-import React, { Component, ReactNode } from "react";
-import { View, Text, TouchableOpacity, StyleSheet, ScrollView, Platform } from "react-native";
+import React, { Component, ReactNode } from 'react';
+import { View, Text, StyleSheet, TouchableOpacity, ScrollView } from 'react-native';
+import { shouldMuteMessage } from '@/utils/errorLogger';
 
 interface Props {
   children: ReactNode;
-  fallback?: ReactNode;
-  onError?: (error: Error, errorInfo: React.ErrorInfo) => void;
 }
 
 interface State {
@@ -14,7 +13,7 @@ interface State {
   errorInfo: React.ErrorInfo | null;
 }
 
-export class ErrorBoundary extends Component<Props, State> {
+class ErrorBoundary extends Component<Props, State> {
   constructor(props: Props) {
     super(props);
     this.state = {
@@ -25,6 +24,18 @@ export class ErrorBoundary extends Component<Props, State> {
   }
 
   static getDerivedStateFromError(error: Error): State {
+    const errorMessage = error.message || String(error);
+    
+    // Don't show error boundary for Metro bundler connection issues
+    if (shouldMuteMessage(errorMessage)) {
+      console.log('[ErrorBoundary] Suppressed non-critical error:', errorMessage);
+      return {
+        hasError: false,
+        error: null,
+        errorInfo: null,
+      };
+    }
+    
     return {
       hasError: true,
       error,
@@ -33,14 +44,27 @@ export class ErrorBoundary extends Component<Props, State> {
   }
 
   componentDidCatch(error: Error, errorInfo: React.ErrorInfo) {
-    console.error("Error caught by boundary:", error, errorInfo);
-
+    const errorMessage = error.message || String(error);
+    
+    // Suppress known non-critical errors
+    if (shouldMuteMessage(errorMessage)) {
+      console.log('[ErrorBoundary] Suppressed error in componentDidCatch:', errorMessage);
+      // Reset error state so app continues to work
+      this.setState({
+        hasError: false,
+        error: null,
+        errorInfo: null,
+      });
+      return;
+    }
+    
+    console.error('[ErrorBoundary] Caught error:', error);
+    console.error('[ErrorBoundary] Error info:', errorInfo);
+    
     this.setState({
       error,
       errorInfo,
     });
-
-    this.props.onError?.(error, errorInfo);
   }
 
   handleReset = () => {
@@ -52,52 +76,28 @@ export class ErrorBoundary extends Component<Props, State> {
   };
 
   render() {
-    if (this.state.hasError) {
-      if (this.props.fallback) {
-        return this.props.fallback;
-      }
-
-      const errorMessage = this.state.error?.message || "Unknown error";
-      const isMetroError = errorMessage.includes("Packager") || errorMessage.includes("Metro");
-      const isNetworkError = errorMessage.includes("Network") || errorMessage.includes("connect");
-
+    if (this.state.hasError && this.state.error) {
       return (
         <View style={styles.container}>
-          <Text style={styles.title}>
-            {isMetroError ? "Development Server Error" : "Oops! Something went wrong"}
-          </Text>
-          
-          <Text style={styles.message}>
-            {isMetroError 
-              ? "The development server is not responding. Please ensure Metro bundler is running and try again."
-              : isNetworkError
-              ? "Unable to connect to the server. Please check your internet connection and try again."
-              : "We're sorry for the inconvenience. The app encountered an error."}
-          </Text>
-
-          {__DEV__ && this.state.error && (
-            <ScrollView style={styles.errorDetails}>
-              <Text style={styles.errorTitle}>Error Details (Dev Only):</Text>
-              <Text style={styles.errorText}>
-                {this.state.error.toString()}
-              </Text>
-              {this.state.errorInfo && (
-                <Text style={styles.errorStack}>
+          <ScrollView contentContainerStyle={styles.scrollContent}>
+            <Text style={styles.title}>Something went wrong</Text>
+            <Text style={styles.message}>
+              {this.state.error.message || 'An unexpected error occurred'}
+            </Text>
+            
+            {__DEV__ && this.state.errorInfo && (
+              <View style={styles.debugContainer}>
+                <Text style={styles.debugTitle}>Debug Info:</Text>
+                <Text style={styles.debugText}>
                   {this.state.errorInfo.componentStack}
                 </Text>
-              )}
-            </ScrollView>
-          )}
-
-          <TouchableOpacity style={styles.button} onPress={this.handleReset}>
-            <Text style={styles.buttonText}>Try Again</Text>
-          </TouchableOpacity>
-
-          {isMetroError && __DEV__ && (
-            <Text style={styles.hint}>
-              Tip: Restart the Metro bundler and reload the app
-            </Text>
-          )}
+              </View>
+            )}
+            
+            <TouchableOpacity style={styles.button} onPress={this.handleReset}>
+              <Text style={styles.buttonText}>Try Again</Text>
+            </TouchableOpacity>
+          </ScrollView>
         </View>
       );
     }
@@ -109,68 +109,57 @@ export class ErrorBoundary extends Component<Props, State> {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    justifyContent: "center",
-    alignItems: "center",
-    padding: 24,
-    backgroundColor: "#000",
+    backgroundColor: '#000000',
+  },
+  scrollContent: {
+    flexGrow: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    padding: 20,
   },
   title: {
     fontSize: 24,
-    fontWeight: "bold",
+    fontWeight: 'bold',
+    color: '#FFFFFF',
     marginBottom: 16,
-    color: "#fff",
-    textAlign: "center",
+    textAlign: 'center',
   },
   message: {
     fontSize: 16,
-    textAlign: "center",
-    color: "#ccc",
+    color: '#CCCCCC',
+    textAlign: 'center',
     marginBottom: 24,
     lineHeight: 24,
   },
-  errorDetails: {
-    maxHeight: 200,
-    width: "100%",
+  debugContainer: {
+    backgroundColor: '#1A1A1A',
     padding: 16,
-    backgroundColor: "#1a1a1a",
     borderRadius: 8,
     marginBottom: 24,
-    borderWidth: 1,
-    borderColor: "#333",
+    width: '100%',
   },
-  errorTitle: {
+  debugTitle: {
     fontSize: 14,
-    fontWeight: "600",
+    fontWeight: 'bold',
+    color: '#FF6B6B',
     marginBottom: 8,
-    color: "#FF3B30",
   },
-  errorText: {
+  debugText: {
     fontSize: 12,
-    color: "#fff",
-    fontFamily: Platform.OS === "ios" ? "Courier" : "monospace",
-    marginBottom: 8,
-  },
-  errorStack: {
-    fontSize: 10,
-    color: "#999",
-    fontFamily: Platform.OS === "ios" ? "Courier" : "monospace",
+    color: '#CCCCCC',
+    fontFamily: 'monospace',
   },
   button: {
-    backgroundColor: "#10B981",
+    backgroundColor: '#007AFF',
     paddingHorizontal: 32,
     paddingVertical: 12,
     borderRadius: 8,
   },
   buttonText: {
-    color: "#fff",
+    color: '#FFFFFF',
     fontSize: 16,
-    fontWeight: "600",
-  },
-  hint: {
-    marginTop: 16,
-    fontSize: 14,
-    color: "#888",
-    textAlign: "center",
-    fontStyle: "italic",
+    fontWeight: '600',
   },
 });
+
+export default ErrorBoundary;
