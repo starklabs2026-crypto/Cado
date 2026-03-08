@@ -410,7 +410,7 @@ export default function HomeScreen() {
 
       setEntries(todayEntries || []);
       setStats(todayStats || { totalCalories: 0, totalProtein: 0, totalCarbs: 0, totalFat: 0, entryCount: 0 });
-      setProfile(userProfile);
+      setProfile(userProfile || null);
 
       console.log('[API] Data loaded successfully');
     } catch (error) {

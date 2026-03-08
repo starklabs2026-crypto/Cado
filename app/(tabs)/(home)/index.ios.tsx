@@ -398,7 +398,7 @@ export default function HomeScreen() {
 
       setEntries(todayEntries || []);
       setStats(todayStats || { totalCalories: 0, totalProtein: 0, totalCarbs: 0, totalFat: 0, entryCount: 0 });
-      setProfile(userProfile);
+      setProfile(userProfile || null);
 
       console.log('[API] Data loaded successfully');
     } catch (error) {
@@ -509,7 +509,7 @@ export default function HomeScreen() {
     { key: 'snack', label: 'Snack', icon: 'fastfood' },
     { key: 'dinner', label: 'Dinner', icon: 'dinner-dining' },
     { key: 'other', label: 'Other', icon: 'restaurant' },
-  ];
+  ] as const;
 
   const proteinValue = `${stats.totalProtein.toFixed(1)}g`;
   const carbsValue = `${stats.totalCarbs.toFixed(1)}g`;
