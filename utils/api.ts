@@ -1,220 +1,350 @@
 
-import Constants from 'expo-constants';
-import * as SecureStore from 'expo-secure-store';
-import { Platform } from 'react-native';
+import Constants from "expo-constants";
+import { Platform } from "react-native";
+import * as SecureStore from "expo-secure-store";
+import { BEARER_TOKEN_KEY } from "@/lib/auth";
 
-const BACKEND_URL = Constants.expoConfig?.extra?.backendUrl || 'http://localhost:3000';
+export const BACKEND_URL = Constants.expoConfig?.extra?.backendUrl || "";
 
-const MAX_RETRIES = 10;
-const INITIAL_RETRY_DELAY_MS = 1000;
-const IOS_TIMEOUT_MS = 60000;
-const ANDROID_TIMEOUT_MS = 30000;
+export const isBackendConfigured = (): boolean => {
+  return !!BACKEND_URL && BACKEND_URL.length > 0;
+};
 
-async function authenticatedApiCall<T>(
-  method: 'GET' | 'POST' | 'PUT' | 'PATCH' | 'DELETE',
-  endpoint: string,
-  data?: any,
-  options?: RequestInit
-): Promise<T | null> {
-  let token: string | null = null;
-  
+export const getBearerToken = async (): Promise<string | null> => {
   try {
-    // Use getItem for web, getItemAsync for native
-    if (Platform.OS === 'web') {
-      token = localStorage.getItem('auth_token');
+    if (Platform.OS === "web") {
+      return localStorage.getItem(BEARER_TOKEN_KEY);
     } else {
-      token = await SecureStore.getItemAsync('auth_token');
+      return await SecureStore.getItemAsync(BEARER_TOKEN_KEY);
     }
   } catch (error) {
-    console.log('[API] Error reading auth token:', error);
+    console.error("[API] Error retrieving bearer token:", error);
     return null;
   }
+};
+
+const MAX_RETRIES = 7;
+const INITIAL_RETRY_DELAY = 1000;
+const MAX_RETRY_DELAY = 10000;
+
+const delay = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
+
+const isSSLError = (error: any): boolean => {
+  if (!error) return false;
+  
+  const errorString = error.toString().toLowerCase();
+  const messageString = error.message?.toLowerCase() || '';
+  
+  return (
+    errorString.includes('ssl') ||
+    errorString.includes('tls') ||
+    errorString.includes('certificate') ||
+    errorString.includes('handshake') ||
+    errorString.includes('cert') ||
+    errorString.includes('secure connection') ||
+    errorString.includes('nsurlsession') ||
+    errorString.includes('nserror') ||
+    errorString.includes('cfnetwork') ||
+    errorString.includes('kCFStreamErrorDomainSSL') ||
+    messageString.includes('ssl') ||
+    messageString.includes('tls') ||
+    messageString.includes('certificate') ||
+    messageString.includes('handshake') ||
+    messageString.includes('cert') ||
+    messageString.includes('secure connection') ||
+    messageString.includes('nsurlsession') ||
+    messageString.includes('nserror') ||
+    messageString.includes('cfnetwork')
+  );
+};
+
+const isNetworkError = (error: any): boolean => {
+  if (!error) return false;
+  
+  const errorString = error.toString().toLowerCase();
+  const messageString = error.message?.toLowerCase() || '';
+  
+  return (
+    error instanceof TypeError ||
+    errorString.includes('network request failed') ||
+    errorString.includes('failed to fetch') ||
+    errorString.includes('network error') ||
+    errorString.includes('connection') ||
+    errorString.includes('timeout') ||
+    errorString.includes('unreachable') ||
+    messageString.includes('network request failed') ||
+    messageString.includes('failed to fetch') ||
+    messageString.includes('network error') ||
+    messageString.includes('connection') ||
+    messageString.includes('timeout') ||
+    messageString.includes('unreachable')
+  );
+};
+
+const calculateRetryDelay = (retryCount: number): number => {
+  const exponentialDelay = INITIAL_RETRY_DELAY * Math.pow(2, retryCount);
+  const jitter = Math.random() * 500;
+  return Math.min(exponentialDelay + jitter, MAX_RETRY_DELAY);
+};
+
+export const apiCall = async <T = any>(
+  endpoint: string,
+  options?: RequestInit,
+  retryCount = 0
+): Promise<T> => {
+  if (!isBackendConfigured()) {
+    throw new Error("Backend URL not configured. Please rebuild the app.");
+  }
+
+  const url = `${BACKEND_URL}${endpoint}`;
+  console.log(`[API] Calling: ${url} ${options?.method || "GET"} (attempt ${retryCount + 1}/${MAX_RETRIES + 1})`);
+
+  try {
+    const isFormData = options?.body instanceof FormData;
+    
+    const fetchOptions: RequestInit = {
+      ...options,
+      headers: {
+        ...(isFormData ? {} : { "Content-Type": "application/json" }),
+        ...options?.headers,
+      },
+    };
+
+    if (Platform.OS === 'ios') {
+      fetchOptions.headers = {
+        ...fetchOptions.headers,
+        'Accept': 'application/json, text/plain, */*',
+        'Accept-Encoding': 'gzip, deflate, br',
+        'Cache-Control': 'no-cache, no-store, must-revalidate',
+        'Pragma': 'no-cache',
+        'Connection': 'keep-alive',
+      };
+    }
+
+    const token = await getBearerToken();
+    if (token) {
+      fetchOptions.headers = {
+        ...fetchOptions.headers,
+        Authorization: `Bearer ${token}`,
+      };
+    }
+
+    const timeoutDuration = Platform.OS === 'ios' ? 45000 : 30000;
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), timeoutDuration);
+
+    try {
+      const response = await fetch(url, {
+        ...fetchOptions,
+        signal: controller.signal,
+      });
+
+      clearTimeout(timeoutId);
+
+      if (!response.ok) {
+        let errorText = "";
+        try {
+          errorText = await response.text();
+        } catch (e) {
+          errorText = "Unable to read error response";
+        }
+        
+        console.error("[API] Error response:", response.status, errorText);
+        
+        if (response.status === 404) {
+          throw new Error(`The requested feature is not available yet. Please try again later.`);
+        } else if (response.status === 401) {
+          throw new Error(`Authentication required. Please sign in again.`);
+        } else if (response.status === 403) {
+          throw new Error(`Access denied. You don't have permission to perform this action.`);
+        } else if (response.status === 429) {
+          if (retryCount < MAX_RETRIES) {
+            const retryDelay = calculateRetryDelay(retryCount);
+            console.log(`[API] Rate limited, retrying in ${retryDelay}ms...`);
+            await delay(retryDelay);
+            return apiCall<T>(endpoint, options, retryCount + 1);
+          }
+          throw new Error(`Too many requests. Please wait a moment and try again.`);
+        } else if (response.status === 525 || response.status === 526 || response.status === 520 || response.status === 521 || response.status === 522 || response.status === 523 || response.status === 524) {
+          if (retryCount < MAX_RETRIES) {
+            const retryDelay = calculateRetryDelay(retryCount);
+            console.log(`[API] Cloudflare/SSL error (${response.status}), retrying in ${retryDelay}ms...`);
+            await delay(retryDelay);
+            return apiCall<T>(endpoint, options, retryCount + 1);
+          }
+          throw new Error(`Connection error. Please check your internet connection and try again.`);
+        } else if (response.status >= 500) {
+          if (retryCount < MAX_RETRIES) {
+            const retryDelay = calculateRetryDelay(retryCount);
+            console.log(`[API] Server error (${response.status}), retrying in ${retryDelay}ms...`);
+            await delay(retryDelay);
+            return apiCall<T>(endpoint, options, retryCount + 1);
+          }
+          throw new Error(`Server error. Please try again later.`);
+        } else {
+          throw new Error(`Request failed: ${errorText || 'Unknown error'}`);
+        }
+      }
+
+      const data = await response.json();
+      console.log("[API] Success:", data);
+      return data;
+    } catch (fetchError) {
+      clearTimeout(timeoutId);
+      throw fetchError;
+    }
+  } catch (error) {
+    console.error("[API] Request failed:", error);
+    
+    if (error instanceof Error && error.name === 'AbortError') {
+      if (retryCount < MAX_RETRIES) {
+        const retryDelay = calculateRetryDelay(retryCount);
+        console.log(`[API] Request timeout, retrying in ${retryDelay}ms...`);
+        await delay(retryDelay);
+        return apiCall<T>(endpoint, options, retryCount + 1);
+      }
+      throw new Error("Request timed out. Please check your internet connection and try again.");
+    }
+    
+    if (isSSLError(error)) {
+      if (retryCount < MAX_RETRIES) {
+        const retryDelay = calculateRetryDelay(retryCount);
+        console.log(`[API] SSL/TLS error detected (attempt ${retryCount + 1}/${MAX_RETRIES + 1}), retrying in ${retryDelay}ms...`);
+        console.log(`[API] SSL Error details:`, error);
+        await delay(retryDelay);
+        return apiCall<T>(endpoint, options, retryCount + 1);
+      }
+      
+      throw new Error("Connection security error. Please restart the app and try again. If the problem persists, check your network settings or try a different network.");
+    }
+    
+    if (isNetworkError(error)) {
+      if (retryCount < MAX_RETRIES) {
+        const retryDelay = calculateRetryDelay(retryCount);
+        console.log(`[API] Network error (attempt ${retryCount + 1}/${MAX_RETRIES + 1}), retrying in ${retryDelay}ms...`);
+        await delay(retryDelay);
+        return apiCall<T>(endpoint, options, retryCount + 1);
+      }
+      
+      throw new Error("Unable to connect to server. Please check your internet connection and try again.");
+    }
+    
+    throw error;
+  }
+};
+
+export const apiGet = async <T = any>(endpoint: string): Promise<T> => {
+  return apiCall<T>(endpoint, { method: "GET" });
+};
+
+export const apiPost = async <T = any>(
+  endpoint: string,
+  data: any
+): Promise<T> => {
+  return apiCall<T>(endpoint, {
+    method: "POST",
+    body: JSON.stringify(data),
+  });
+};
+
+export const apiPut = async <T = any>(
+  endpoint: string,
+  data: any
+): Promise<T> => {
+  return apiCall<T>(endpoint, {
+    method: "PUT",
+    body: JSON.stringify(data),
+  });
+};
+
+export const apiPatch = async <T = any>(
+  endpoint: string,
+  data: any
+): Promise<T> => {
+  return apiCall<T>(endpoint, {
+    method: "PATCH",
+    body: JSON.stringify(data),
+  });
+};
+
+export const apiDelete = async <T = any>(endpoint: string, data: any = {}): Promise<T> => {
+  return apiCall<T>(endpoint, {
+    method: "DELETE",
+    body: JSON.stringify(data),
+  });
+};
+
+export const authenticatedApiCall = async <T = any>(
+  endpoint: string,
+  options?: RequestInit
+): Promise<T> => {
+  const token = await getBearerToken();
 
   if (!token) {
-    console.log('[API] No auth token found, skipping authenticated request to', endpoint);
-    return null;
+    throw new Error("Authentication token not found. Please sign in.");
   }
 
-  const fullUrl = `${BACKEND_URL}${endpoint}`;
-  const timeout = Platform.OS === 'ios' ? IOS_TIMEOUT_MS : ANDROID_TIMEOUT_MS;
+  return apiCall<T>(endpoint, {
+    ...options,
+    headers: {
+      ...options?.headers,
+      Authorization: `Bearer ${token}`,
+    },
+  });
+};
 
-  const headers: Record<string, string> = {
-    'Authorization': `Bearer ${token}`,
-    'Accept': 'application/json',
-    'User-Agent': `Calo-${Platform.OS === 'ios' ? 'iOS' : 'Android'}/1.0`,
-    'Accept-Encoding': 'gzip, deflate, br',
-    'Connection': 'keep-alive',
-    ...(options?.headers as Record<string, string> || {}),
-  };
+export const authenticatedGet = async <T = any>(endpoint: string): Promise<T> => {
+  return authenticatedApiCall<T>(endpoint, { method: "GET" });
+};
 
-  if (method !== 'GET' && method !== 'DELETE' && data !== undefined) {
-    headers['Content-Type'] = 'application/json';
-  }
-
-  for (let attempt = 0; attempt < MAX_RETRIES; attempt++) {
-    try {
-      console.log(`[API] Calling: ${fullUrl} ${method} (attempt ${attempt + 1}/${MAX_RETRIES})`);
-
-      const controller = new AbortController();
-      const timeoutId = setTimeout(() => controller.abort(), timeout);
-
-      const response = await fetch(fullUrl, {
-        method,
-        headers,
-        body: data !== undefined && method !== 'GET' && method !== 'DELETE' ? JSON.stringify(data) : undefined,
-        signal: controller.signal,
-        ...options,
-      });
-
-      clearTimeout(timeoutId);
-
-      if (response.status >= 520 && response.status <= 527) {
-        throw new Error(`Cloudflare error: ${response.status}`);
-      }
-
-      if (!response.ok) {
-        const errorText = await response.text();
-        console.error(`[API] Error response (${response.status}):`, errorText);
-        throw new Error(`HTTP ${response.status}: ${errorText}`);
-      }
-
-      const result = await response.json();
-      console.log('[API] Success:', result);
-      return result as T;
-    } catch (error: any) {
-      const errorMessage = error.message || String(error);
-      console.error(`[API] Attempt ${attempt + 1} failed:`, errorMessage);
-
-      const isRetryableError =
-        errorMessage.includes('SSL') ||
-        errorMessage.includes('TLS') ||
-        errorMessage.includes('certificate') ||
-        errorMessage.includes('kCFStreamErrorDomain') ||
-        errorMessage.includes('NSURLSession') ||
-        errorMessage.includes('CFNetwork') ||
-        errorMessage.includes('ECONNREFUSED') ||
-        errorMessage.includes('ENOTFOUND') ||
-        errorMessage.includes('ETIMEDOUT') ||
-        errorMessage.includes('Network request failed') ||
-        errorMessage.includes('Cloudflare error') ||
-        errorMessage.includes('aborted');
-
-      if (isRetryableError && attempt < MAX_RETRIES - 1) {
-        const delay = Math.min(
-          INITIAL_RETRY_DELAY_MS * Math.pow(2, attempt) + Math.random() * 500,
-          15000
-        );
-        console.log(`[API] Retrying in ${delay}ms...`);
-        await new Promise(resolve => setTimeout(resolve, delay));
-        continue;
-      }
-
-      console.error('[API] All retry attempts failed');
-      return null;
-    }
-  }
-
-  return null;
-}
-
-export const authenticatedGet = <T>(endpoint: string, options?: RequestInit): Promise<T | null> =>
-  authenticatedApiCall<T>('GET', endpoint, undefined, options);
-
-export const authenticatedPost = <T>(endpoint: string, data?: any, options?: RequestInit): Promise<T | null> =>
-  authenticatedApiCall<T>('POST', endpoint, data, options);
-
-export const authenticatedPut = <T>(endpoint: string, data?: any, options?: RequestInit): Promise<T | null> =>
-  authenticatedApiCall<T>('PUT', endpoint, data, options);
-
-export const authenticatedPatch = <T>(endpoint: string, data?: any, options?: RequestInit): Promise<T | null> =>
-  authenticatedApiCall<T>('PATCH', endpoint, data, options);
-
-export const authenticatedDelete = <T>(endpoint: string, options?: RequestInit): Promise<T | null> =>
-  authenticatedApiCall<T>('DELETE', endpoint, undefined, options);
-
-async function publicApiCall<T>(
-  method: 'GET' | 'POST',
+export const authenticatedPost = async <T = any>(
   endpoint: string,
-  data?: any,
-  options?: RequestInit
-): Promise<T | null> {
-  const fullUrl = `${BACKEND_URL}${endpoint}`;
-  const timeout = Platform.OS === 'ios' ? IOS_TIMEOUT_MS : ANDROID_TIMEOUT_MS;
-
-  const headers: Record<string, string> = {
-    'Accept': 'application/json',
-    'User-Agent': `Calo-${Platform.OS === 'ios' ? 'iOS' : 'Android'}/1.0`,
-    'Accept-Encoding': 'gzip, deflate, br',
-    'Connection': 'keep-alive',
-    ...(options?.headers as Record<string, string> || {}),
+  data: any,
+  options?: { headers?: Record<string, string> }
+): Promise<T> => {
+  const isFormData = data instanceof FormData;
+  
+  const fetchOptions: RequestInit = {
+    method: "POST",
+    body: isFormData ? data : JSON.stringify(data),
   };
 
-  if (method === 'POST' && data !== undefined) {
-    headers['Content-Type'] = 'application/json';
+  if (!isFormData) {
+    fetchOptions.headers = {
+      "Content-Type": "application/json",
+      ...options?.headers,
+    };
+  } else if (options?.headers) {
+    const { "Content-Type": _, ...otherHeaders } = options.headers;
+    fetchOptions.headers = otherHeaders;
   }
 
-  for (let attempt = 0; attempt < MAX_RETRIES; attempt++) {
-    try {
-      console.log(`[API] Public call: ${fullUrl} ${method} (attempt ${attempt + 1}/${MAX_RETRIES})`);
+  return authenticatedApiCall<T>(endpoint, fetchOptions);
+};
 
-      const controller = new AbortController();
-      const timeoutId = setTimeout(() => controller.abort(), timeout);
+export const authenticatedPut = async <T = any>(
+  endpoint: string,
+  data: any
+): Promise<T> => {
+  return authenticatedApiCall<T>(endpoint, {
+    method: "PUT",
+    body: JSON.stringify(data),
+  });
+};
 
-      const response = await fetch(fullUrl, {
-        method,
-        headers,
-        body: data !== undefined && method === 'POST' ? JSON.stringify(data) : undefined,
-        signal: controller.signal,
-        ...options,
-      });
+export const authenticatedPatch = async <T = any>(
+  endpoint: string,
+  data: any
+): Promise<T> => {
+  return authenticatedApiCall<T>(endpoint, {
+    method: "PATCH",
+    body: JSON.stringify(data),
+  });
+};
 
-      clearTimeout(timeoutId);
-
-      if (response.status >= 520 && response.status <= 527) {
-        throw new Error(`Cloudflare error: ${response.status}`);
-      }
-
-      if (!response.ok) {
-        const errorText = await response.text();
-        console.error(`[API] Error response (${response.status}):`, errorText);
-        throw new Error(`HTTP ${response.status}: ${errorText}`);
-      }
-
-      const result = await response.json();
-      console.log('[API] Success:', result);
-      return result as T;
-    } catch (error: any) {
-      const errorMessage = error.message || String(error);
-      console.error(`[API] Attempt ${attempt + 1} failed:`, errorMessage);
-
-      const isRetryableError =
-        errorMessage.includes('SSL') ||
-        errorMessage.includes('TLS') ||
-        errorMessage.includes('certificate') ||
-        errorMessage.includes('Network request failed') ||
-        errorMessage.includes('Cloudflare error') ||
-        errorMessage.includes('aborted');
-
-      if (isRetryableError && attempt < MAX_RETRIES - 1) {
-        const delay = Math.min(
-          INITIAL_RETRY_DELAY_MS * Math.pow(2, attempt) + Math.random() * 500,
-          15000
-        );
-        console.log(`[API] Retrying in ${delay}ms...`);
-        await new Promise(resolve => setTimeout(resolve, delay));
-        continue;
-      }
-
-      console.error('[API] All retry attempts failed');
-      return null;
-    }
-  }
-
-  return null;
-}
-
-export const apiGet = <T>(endpoint: string, options?: RequestInit): Promise<T | null> =>
-  publicApiCall<T>('GET', endpoint, undefined, options);
-
-export const apiPost = <T>(endpoint: string, data?: any, options?: RequestInit): Promise<T | null> =>
-  publicApiCall<T>('POST', endpoint, data, options);
+export const authenticatedDelete = async <T = any>(endpoint: string, data: any = {}): Promise<T> => {
+  return authenticatedApiCall<T>(endpoint, {
+    method: "DELETE",
+    body: JSON.stringify(data),
+  });
+};
