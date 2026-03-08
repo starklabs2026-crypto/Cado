@@ -580,7 +580,7 @@ export default function HomeScreen() {
       
       <View style={dynamicStyles.header}>
         <Text style={dynamicStyles.headerTitle}>Calo</Text>
-        <Text style={dynamicStyles.headerSubtitle}>Track your nutrition</Text>
+        <Text style={dynamicStyles.headerSubtitle}>By FoodPharmer</Text>
       </View>
 
       <ScrollView style={dynamicStyles.scrollView} showsVerticalScrollIndicator={false}>
