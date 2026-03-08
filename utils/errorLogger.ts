@@ -1,3 +1,4 @@
+
 // Global error logging for runtime errors
 // Captures console.log/warn/error and sends to Natively server for AI debugging
 
@@ -17,6 +18,8 @@ const clearLogAfterDelay = (logKey: string) => {
 const MUTED_MESSAGES = [
   'each child in a list should have a unique "key" prop',
   'Each child in a list should have a unique "key" prop',
+  'AsyncStorageError: Native module is null, cannot access legacy storage',
+  '[Theme] Error saving theme',
 ];
 
 // Check if a message should be muted
@@ -293,23 +296,25 @@ export const setupErrorLogging = () => {
 
   // Override console.log to capture and send to server
   console.log = (...args: any[]) => {
+    // Queue log for sending to server (skip muted messages)
+    const message = stringifyArgs(args);
+    if (shouldMuteMessage(message)) return;
+
     // Always call original first
     originalConsoleLog.apply(console, args);
 
-    // Queue log for sending to server
-    const message = stringifyArgs(args);
     const source = getCallerInfo();
     queueLog('log', message, source);
   };
 
   // Override console.warn to capture and send to server
   console.warn = (...args: any[]) => {
-    // Always call original first
-    originalConsoleWarn.apply(console, args);
-
     // Queue log for sending to server (skip muted messages)
     const message = stringifyArgs(args);
     if (shouldMuteMessage(message)) return;
+
+    // Always call original first
+    originalConsoleWarn.apply(console, args);
 
     const source = getCallerInfo();
     queueLog('warn', message, source);
