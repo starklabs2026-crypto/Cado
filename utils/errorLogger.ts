@@ -20,6 +20,12 @@ const MUTED_MESSAGES = [
   'Each child in a list should have a unique "key" prop',
   'AsyncStorageError: Native module is null, cannot access legacy storage',
   '[Theme] Error saving theme',
+  '[Theme] Error loading theme',
+  'Error loading theme',
+  'Disconnected from Metro',
+  'To reconnect:',
+  'Ensure that Metro is running',
+  'Reload this app',
 ];
 
 // Check if a message should be muted
@@ -287,12 +293,6 @@ export const setupErrorLogging = () => {
   const originalConsoleLog = console.log;
   const originalConsoleWarn = console.warn;
   const originalConsoleError = console.error;
-
-  // Log initialization info using original console (not intercepted)
-  const logServerUrl = getLogServerUrl();
-  originalConsoleLog('[Natively] Setting up error logging...');
-  originalConsoleLog('[Natively] Log server URL:', logServerUrl || 'NOT AVAILABLE');
-  originalConsoleLog('[Natively] Platform:', Platform.OS);
 
   // Override console.log to capture and send to server
   console.log = (...args: any[]) => {

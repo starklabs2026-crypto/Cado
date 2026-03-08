@@ -1,6 +1,7 @@
 
 import React, { createContext, useContext, useState, useEffect, ReactNode } from 'react';
 import * as SecureStore from 'expo-secure-store';
+import { Platform } from 'react-native';
 import { lightColors, darkColors } from '@/styles/commonStyles';
 
 type Theme = 'light' | 'dark';
@@ -43,14 +44,20 @@ export function ThemeProvider({ children }: { children: ReactNode }) {
 
   const loadTheme = async () => {
     try {
+      // On web, SecureStore is not available, so skip
+      if (Platform.OS === 'web') {
+        setTheme('light');
+        setIsLoading(false);
+        return;
+      }
+
       const savedTheme = await SecureStore.getItemAsync(THEME_STORAGE_KEY);
       if (savedTheme === 'dark' || savedTheme === 'light') {
         setTheme(savedTheme);
-        console.log('[Theme] Loaded saved theme:', savedTheme);
       }
     } catch (error) {
-      console.error('[Theme] Error loading theme, using default:', error);
-      // Fallback to light theme if SecureStore fails
+      // Silently fallback to light theme if SecureStore fails
+      // This is expected on first launch or in Expo Go
       setTheme('light');
     } finally {
       setIsLoading(false);
@@ -60,12 +67,16 @@ export function ThemeProvider({ children }: { children: ReactNode }) {
   const toggleTheme = async () => {
     const newTheme = theme === 'light' ? 'dark' : 'light';
     setTheme(newTheme);
+    
     try {
+      // On web, SecureStore is not available, so skip
+      if (Platform.OS === 'web') {
+        return;
+      }
+
       await SecureStore.setItemAsync(THEME_STORAGE_KEY, newTheme);
-      console.log('[Theme] Theme toggled to:', newTheme);
     } catch (error) {
-      console.error('[Theme] Error saving theme:', error);
-      // Still allow theme change even if save fails
+      // Silently fail - theme change still works in memory
     }
   };
 
