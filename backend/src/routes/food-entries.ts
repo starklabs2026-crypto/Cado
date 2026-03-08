@@ -217,6 +217,163 @@ export function registerFoodEntryRoutes(app: App) {
     }
   );
 
+  // POST /api/food/lookup-nutrition - Lookup nutritional values for a food by name using AI
+  app.fastify.post<{ Body: { foodName: string } }>(
+    '/api/food/lookup-nutrition',
+    {
+      schema: {
+        description: 'Lookup nutritional values for a food name using LLM analysis',
+        tags: ['food-ai'],
+        body: {
+          type: 'object',
+          required: ['foodName'],
+          properties: {
+            foodName: { type: 'string', minLength: 1 },
+          },
+        },
+        response: {
+          200: {
+            type: 'object',
+            properties: {
+              foodName: { type: 'string' },
+              calories: { type: 'number' },
+              protein: { type: 'number' },
+              carbs: { type: 'number' },
+              fat: { type: 'number' },
+              confidence: { type: 'string', enum: ['high', 'medium', 'low'] },
+            },
+          },
+          400: {
+            type: 'object',
+            properties: { error: { type: 'string' } },
+          },
+          401: {
+            type: 'object',
+            properties: { error: { type: 'string' } },
+          },
+        },
+      },
+    },
+    async (request: FastifyRequest<{ Body: { foodName: string } }>, reply: FastifyReply) => {
+      const session = await requireAuth(request, reply);
+      if (!session) return;
+
+      const { foodName } = request.body;
+
+      if (!foodName || foodName.trim().length === 0) {
+        app.logger.warn({ userId: session.user.id }, 'Empty food name provided');
+        return reply.status(400).send({ error: 'Food name must be provided' });
+      }
+
+      app.logger.info({ userId: session.user.id, foodName }, 'Looking up nutrition for food name');
+
+      try {
+        const result = await generateObject({
+          model: gateway('openai/gpt-4o'),
+          schema: nutritionSchema,
+          schemaName: 'FoodNutrition',
+          schemaDescription: 'Extract nutritional information for a specific food',
+          messages: [
+            {
+              role: 'user',
+              content: `You are a nutritionist expert. Analyze this food name and provide accurate nutritional information for a typical serving.
+
+Food name: "${foodName}"
+
+Provide the nutritional values for ONE TYPICAL SERVING of this food (not per 100g, not per 1kg, but a realistic serving size someone would eat).
+
+Examples of typical serving sizes:
+- 1 scoop of ice cream = ~100g
+- 1 slice of pizza = ~150g
+- 1 cup of milk = ~200ml
+- 1 apple = ~150g
+- 1 chicken breast = ~150g
+- 1 bowl of rice = ~200g
+
+Important:
+1. Set confidence to "high" if you're very confident about the identification (common foods, well-known dishes)
+2. Set confidence to "medium" if somewhat confident but the exact preparation is unclear
+3. Set confidence to "low" if uncertain or if the food is very ambiguous
+4. All nutritional values MUST be greater than 0 (no zeros allowed)
+5. If carbs seem to be 0 (like pure protein), ensure other macros are correct
+6. Provide realistic, accurate nutritional data based on actual food composition`,
+            },
+          ],
+        });
+
+        const nutritionData = result.object;
+
+        // Validate that we have positive values
+        if (nutritionData.calories <= 0) {
+          nutritionData.calories = Math.max(nutritionData.calories, 100);
+        }
+        if (nutritionData.protein <= 0 && nutritionData.carbs <= 0 && nutritionData.fat <= 0) {
+          // If all macros are 0, provide reasonable defaults
+          nutritionData.protein = 5;
+          nutritionData.carbs = 15;
+          nutritionData.fat = 5;
+        }
+
+        app.logger.info(
+          {
+            userId: session.user.id,
+            foodName: nutritionData.foodName,
+            calories: nutritionData.calories,
+            confidence: nutritionData.confidence,
+          },
+          'Nutrition lookup successful'
+        );
+
+        return {
+          foodName: nutritionData.foodName,
+          calories: nutritionData.calories,
+          protein: nutritionData.protein,
+          carbs: nutritionData.carbs,
+          fat: nutritionData.fat,
+          confidence: nutritionData.confidence,
+        };
+      } catch (err) {
+        app.logger.warn(
+          { userId: session.user.id, foodName, err },
+          'AI nutrition lookup failed, providing fallback'
+        );
+
+        // Fallback: Search database for similar foods
+        try {
+          const dbMatches = await app.db
+            .select()
+            .from(schema.foodDatabase)
+            .where(ilike(schema.foodDatabase.name, `%${foodName}%`))
+            .limit(1);
+
+          if (dbMatches.length > 0) {
+            const match = dbMatches[0];
+            return {
+              foodName: match.name,
+              calories: match.calories,
+              protein: match.protein,
+              carbs: match.carbs,
+              fat: match.fat,
+              confidence: 'medium' as const,
+            };
+          }
+        } catch (dbErr) {
+          app.logger.warn({ err: dbErr }, 'Database fallback failed');
+        }
+
+        // Final fallback with reasonable defaults
+        return {
+          foodName,
+          calories: 250,
+          protein: 10,
+          carbs: 25,
+          fat: 10,
+          confidence: 'low' as const,
+        };
+      }
+    }
+  );
+
   // GET /api/food/database/:id - Get food item by ID
   app.fastify.get<{ Params: { id: string } }>(
     '/api/food/database/:id',

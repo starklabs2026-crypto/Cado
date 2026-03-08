@@ -649,6 +649,49 @@ describe("API Integration Tests", () => {
     await expectStatus(res, 401);
   });
 
+  // ===== Food Nutrition Lookup Tests =====
+
+  test("Lookup nutrition by food name", async () => {
+    const res = await authenticatedApi("/api/food/lookup-nutrition", authToken, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        foodName: "vanilla ice cream",
+      }),
+    });
+    await expectStatus(res, 200);
+    const data = await res.json();
+    expect(data.foodName).toBeDefined();
+    expect(typeof data.calories).toBe("number");
+    expect(data.calories).toBeGreaterThan(0);
+    expect(typeof data.protein).toBe("number");
+    expect(typeof data.carbs).toBe("number");
+    expect(typeof data.fat).toBe("number");
+    expect(["high", "medium", "low"]).toContain(data.confidence);
+  });
+
+  test("Lookup nutrition without food name returns 400", async () => {
+    const res = await authenticatedApi("/api/food/lookup-nutrition", authToken, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        foodName: "",
+      }),
+    });
+    await expectStatus(res, 400);
+  });
+
+  test("Lookup nutrition without auth returns 401", async () => {
+    const res = await api("/api/food/lookup-nutrition", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        foodName: "chicken",
+      }),
+    });
+    await expectStatus(res, 401);
+  });
+
   // ===== Food Database Get Tests =====
 
   test("Get food from database by ID", async () => {
