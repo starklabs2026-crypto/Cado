@@ -29,6 +29,9 @@ const MUTED_MESSAGES = [
   '[API] Error loading',
   'Authentication token not found',
   'Please sign in',
+  'Each child in a list should have a unique "key" prop',
+  'Check the render method',
+  'warning-keys',
 ];
 
 export function shouldMuteMessage(message: string): boolean {
