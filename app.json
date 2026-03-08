@@ -1,3 +1,4 @@
+
 {
   "expo": {
     "name": "i-want-to-build-a-ca",
@@ -115,7 +116,10 @@
     },
     "extra": {
       "router": {},
-      "backendUrl": "https://8sy935d3kbfkkm35z7tbk22nep8qpb9m.app.specular.dev"
+      "backendUrl": "https://8sy935d3kbfkkm35z7tbk22nep8qpb9m.app.specular.dev",
+      "eas": {
+        "projectId": "f9bb2061-b1ef-4b86-be59-c63677f9c2e9"
+      }
     }
   }
 }

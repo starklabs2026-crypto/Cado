@@ -22,10 +22,19 @@ const MUTED_MESSAGES = [
   'NSError',
   'CFNetwork',
   'kCFStreamErrorDomainSSL',
+  'kCFStreamErrorDomain',
+  'NSURLConnection',
+  'NSURLSessionTask',
+  'SSL_ERROR',
+  'ERR_SSL',
+  'SSL_PROTOCOL_ERROR',
   'Connection security error',
   'Unable to connect to server',
   'Cloudflare',
   'Connection error',
+  'ECONNREFUSED',
+  'ENOTFOUND',
+  'ETIMEDOUT',
 ];
 
 export function shouldMuteMessage(message: string): boolean {
