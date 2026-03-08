@@ -1,3 +1,4 @@
+
 import { createAuthClient } from "better-auth/react";
 import { expoClient } from "@better-auth/expo/client";
 import * as SecureStore from "expo-secure-store";
@@ -15,7 +16,11 @@ const storage = Platform.OS === "web"
       setItem: (key: string, value: string) => localStorage.setItem(key, value),
       deleteItem: (key: string) => localStorage.removeItem(key),
     }
-  : SecureStore;
+  : {
+      getItem: async (key: string) => await SecureStore.getItemAsync(key),
+      setItem: async (key: string, value: string) => await SecureStore.setItemAsync(key, value),
+      deleteItem: async (key: string) => await SecureStore.deleteItemAsync(key),
+    };
 
 export const authClient = createAuthClient({
   baseURL: API_URL,

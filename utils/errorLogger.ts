@@ -6,6 +6,8 @@ const MUTED_MESSAGES = [
   '[Theme] Error loading theme',
   '[Theme] Error saving theme',
   'SecureStore',
+  'getValueWithKeyAsync',
+  'getItemAsync',
   'Failed to download remote update',
   'kCFStreamErrorDomain',
   'NSURLConnection',
@@ -28,6 +30,10 @@ const MUTED_MESSAGES = [
   'Metro Bundler',
   'DevServer',
   'dev server',
+  'Signup already in progress',
+  'Failed to load resource',
+  'execute.a.v1/signup',
+  'Received unexpected stream_message event',
 ];
 
 function shouldMuteMessage(message: string): boolean {

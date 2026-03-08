@@ -16,7 +16,20 @@ async function authenticatedApiCall<T>(
   data?: any,
   options?: RequestInit
 ): Promise<T | null> {
-  const token = await SecureStore.getItemAsync('auth_token');
+  let token: string | null = null;
+  
+  try {
+    // Use getItem for web, getItemAsync for native
+    if (Platform.OS === 'web') {
+      token = localStorage.getItem('auth_token');
+    } else {
+      token = await SecureStore.getItemAsync('auth_token');
+    }
+  } catch (error) {
+    console.log('[API] Error reading auth token:', error);
+    return null;
+  }
+
   if (!token) {
     console.log('[API] No auth token found, skipping authenticated request to', endpoint);
     return null;
