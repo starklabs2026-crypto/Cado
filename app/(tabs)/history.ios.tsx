@@ -175,7 +175,7 @@ export default function HistoryScreen() {
     const maxBMI = 35;
     const clampedBMI = Math.max(minBMI, Math.min(maxBMI, bmi));
     const position = ((clampedBMI - minBMI) / (maxBMI - minBMI)) * 100;
-    return `${position}%`;
+    return `${position}%` as const;
   };
 
   const renderProgressReport = () => {

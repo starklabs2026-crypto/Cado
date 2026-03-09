@@ -173,12 +173,12 @@ export default function HistoryScreen() {
     }
   };
 
-  const getBMIPosition = (bmi: number) => {
+  const getBMIPosition = (bmi: number): `${number}%` => {
     const minBMI = 15;
     const maxBMI = 35;
     const clampedBMI = Math.max(minBMI, Math.min(maxBMI, bmi));
     const position = ((clampedBMI - minBMI) / (maxBMI - minBMI)) * 100;
-    return `${position}%`;
+    return `${position}%` as `${number}%`;
   };
 
   const renderProgressReport = () => {

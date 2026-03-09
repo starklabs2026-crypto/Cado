@@ -1,5 +1,6 @@
 
 import React, { createContext, useContext, useState, useEffect, ReactNode } from 'react';
+import { Platform } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { lightColors, darkColors } from '@/styles/commonStyles';
 
@@ -16,6 +17,9 @@ const ThemeContext = createContext<ThemeContextType | undefined>(undefined);
 
 const THEME_STORAGE_KEY = '@calo_theme';
 
+// Dark mode is disabled on iOS for now
+const IS_IOS = Platform.OS === 'ios';
+
 export function ThemeProvider({ children }: { children: ReactNode }) {
   const [theme, setTheme] = useState<Theme>('light');
   const [isLoading, setIsLoading] = useState(true);
@@ -25,6 +29,13 @@ export function ThemeProvider({ children }: { children: ReactNode }) {
   }, []);
 
   const loadTheme = async () => {
+    // On iOS, always force light theme
+    if (IS_IOS) {
+      setTheme('light');
+      setIsLoading(false);
+      return;
+    }
+
     try {
       const savedTheme = await AsyncStorage.getItem(THEME_STORAGE_KEY);
       if (savedTheme === 'dark' || savedTheme === 'light') {
@@ -40,6 +51,9 @@ export function ThemeProvider({ children }: { children: ReactNode }) {
   };
 
   const toggleTheme = async () => {
+    // On iOS, dark mode is disabled — toggleTheme is a no-op
+    if (IS_IOS) return;
+
     const newTheme = theme === 'light' ? 'dark' : 'light';
     setTheme(newTheme);
     try {

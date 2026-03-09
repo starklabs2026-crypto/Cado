@@ -11,6 +11,7 @@ import {
   ScrollView,
   Platform,
   TextInput,
+  Linking,
 } from 'react-native';
 import { Stack, useRouter } from 'expo-router';
 import * as ImagePicker from 'expo-image-picker';
@@ -63,12 +64,12 @@ export default function CameraScreen() {
     try {
       const data = await authenticatedGet<{ can_scan: boolean; reason?: string; scans_remaining?: number; is_pro: boolean }>('/api/usage/check-limit');
       console.log('[API] Usage limit check:', data);
-      
+
       if (!data.can_scan) {
         showError('Scan Limit Reached', data.reason || 'You have reached your daily scan limit. Upgrade to Pro for unlimited scans.');
         return false;
       }
-      
+
       setUsageInfo(data);
       return true;
     } catch (error: any) {
@@ -98,16 +99,16 @@ export default function CameraScreen() {
 
   const takePhoto = async () => {
     console.log('User tapped Take Photo button');
-    
+
     const canScan = await checkUsageLimit();
     if (!canScan) return;
-    
+
     const hasPermission = await requestPermissions();
     if (!hasPermission) return;
 
     try {
       Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-      
+
       const result = await ImagePicker.launchCameraAsync({
         mediaTypes: ['images'],
         allowsEditing: true,
@@ -128,13 +129,13 @@ export default function CameraScreen() {
 
   const pickFromGallery = async () => {
     console.log('User tapped Pick from Gallery button');
-    
+
     const canScan = await checkUsageLimit();
     if (!canScan) return;
-    
+
     try {
       Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-      
+
       const result = await ImagePicker.launchImageLibraryAsync({
         mediaTypes: ['images'],
         allowsEditing: true,
@@ -160,10 +161,10 @@ export default function CameraScreen() {
 
     try {
       const formData = new FormData();
-      
+
       const uriParts = imageUri.split('.');
       const fileType = uriParts[uriParts.length - 1] || 'jpg';
-      
+
       // @ts-expect-error - FormData append accepts this format in React Native
       formData.append('image', {
         uri: imageUri,
@@ -178,15 +179,15 @@ export default function CameraScreen() {
       console.log('[API] GPT-4 Vision analysis result:', result);
       console.log('[API] Confidence level:', result.confidence);
       console.log('[API] Nutritional data - Calories:', result.calories, 'Protein:', result.protein, 'Carbs:', result.carbs, 'Fat:', result.fat);
-      
+
       if (result.databaseSuggestions) {
         console.log('[API] Database suggestions count:', result.databaseSuggestions.length);
       }
-      
+
       // Check if nutritional data is valid (not all zeros)
       // Backend now returns fallback values (200 cal, 5g protein, 30g carbs, 8g fat) instead of zeros
       const hasValidNutrition = result.calories > 0 || result.protein > 0 || result.carbs > 0 || result.fat > 0;
-      
+
       if (!hasValidNutrition) {
         console.warn('[API] Analysis returned zero nutritional values - prompting user to type food name');
         showError(
@@ -202,7 +203,7 @@ export default function CameraScreen() {
         setAnalysisResult(result);
         setShowResultModal(true);
         Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-        
+
         // If confidence is low, suggest user to type food name for better accuracy
         if (result.confidence === 'low') {
           console.log('[API] Low confidence - user can type food name for better accuracy');
@@ -292,7 +293,7 @@ export default function CameraScreen() {
 
     // Validate nutritional data before saving - backend also validates this
     const hasValidNutrition = analysisResult.calories > 0 || analysisResult.protein > 0 || analysisResult.carbs > 0 || analysisResult.fat > 0;
-    
+
     if (!hasValidNutrition) {
       showError(
         'Invalid Nutritional Data',
@@ -351,7 +352,7 @@ export default function CameraScreen() {
 
       console.log('[API] Food entry saved successfully');
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-      
+
       router.back();
     } catch (error: any) {
       console.error('[API] Error saving entry:', error);
@@ -391,11 +392,11 @@ export default function CameraScreen() {
   const openManualInput = () => {
     console.log('User tapped Type Name button - opening manual input modal');
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-    
+
     // CRITICAL FIX: Close result modal first, then open manual input modal
     // This prevents modal stacking issues on iOS
     setShowResultModal(false);
-    
+
     // Use setTimeout to ensure the result modal closes before opening manual input
     setTimeout(() => {
       setManualFoodName('');
@@ -404,16 +405,16 @@ export default function CameraScreen() {
     }, 100);
   };
 
-  const confidenceColor = analysisResult?.confidence === 'high' 
-    ? colors.success 
-    : analysisResult?.confidence === 'medium' 
-    ? colors.accent 
-    : colors.error;
+  const confidenceColor = analysisResult?.confidence === 'high'
+    ? colors.success
+    : analysisResult?.confidence === 'medium'
+      ? colors.accent
+      : colors.error;
 
   const confidenceText = analysisResult?.confidence || 'unknown';
-  
+
   // Check if nutritional data is valid
-  const hasValidNutrition = analysisResult 
+  const hasValidNutrition = analysisResult
     ? (analysisResult.calories > 0 || analysisResult.protein > 0 || analysisResult.carbs > 0 || analysisResult.fat > 0)
     : false;
 
@@ -450,7 +451,7 @@ export default function CameraScreen() {
               color={colors.primary}
             />
           </View>
-          
+
           <Text style={dynamicStyles.emptyTitle}>Scan Your Food</Text>
           <Text style={dynamicStyles.emptySubtitle}>
             Take a photo of your meal and let AI automatically calculate the nutrition values
@@ -501,7 +502,7 @@ export default function CameraScreen() {
       ) : (
         <View style={dynamicStyles.previewContainer}>
           <Image source={{ uri: selectedImage }} style={dynamicStyles.previewImage} />
-          
+
           {analyzing && (
             <View style={dynamicStyles.analyzingOverlay}>
               <View style={dynamicStyles.analyzingCard}>
@@ -586,7 +587,7 @@ export default function CameraScreen() {
                         color={colors.accent}
                       />
                       <Text style={dynamicStyles.warningText}>
-                        {!hasValidNutrition 
+                        {!hasValidNutrition
                           ? 'Please type the food name for accurate nutritional information.'
                           : 'Low confidence detection. You can type the food name for better accuracy.'}
                       </Text>
@@ -687,7 +688,7 @@ export default function CameraScreen() {
 
                     <TouchableOpacity
                       style={[
-                        dynamicStyles.saveButton, 
+                        dynamicStyles.saveButton,
                         (saving || !hasValidNutrition) && dynamicStyles.saveButtonDisabled
                       ]}
                       onPress={saveEntry}
@@ -809,7 +810,16 @@ export default function CameraScreen() {
             <Text style={dynamicStyles.errorMessage}>{errorModal.message}</Text>
             <TouchableOpacity
               style={dynamicStyles.errorButton}
-              onPress={() => setErrorModal({ ...errorModal, visible: false })}
+              onPress={() => {
+                setErrorModal({ ...errorModal, visible: false });
+                if (errorModal.title === 'Permission Required') {
+                  try {
+                    Linking.openSettings();
+                  } catch (e) {
+                    console.warn('Could not open settings:', e);
+                  }
+                }
+              }}
             >
               <Text style={dynamicStyles.errorButtonText}>OK</Text>
             </TouchableOpacity>

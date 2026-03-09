@@ -164,30 +164,33 @@ export default function ProfileScreen() {
           )}
         </View>
 
-        {/* Dark Mode Toggle */}
-        <TouchableOpacity style={[dynamicStyles.themeToggleCard, { backgroundColor: colors.card, borderColor: colors.border }]} onPress={handleToggleTheme}>
-          <View style={dynamicStyles.themeToggleLeft}>
-            <View style={[dynamicStyles.themeIconContainer, { backgroundColor: isDarkMode ? '#FFD700' : colors.primary }]}>
-              <IconSymbol
-                ios_icon_name={isDarkMode ? 'moon.fill' : 'sun.max.fill'}
-                android_material_icon_name={isDarkMode ? 'nightlight' : 'wb-sunny'}
-                size={24}
-                color={isDarkMode ? '#000000' : '#FFFFFF'}
-              />
+        {/* Dark Mode Toggle - hidden on iOS (dark mode disabled) */}
+        {/* To re-enable, remove the {false &&} wrapper below */}
+        {false && (
+          <TouchableOpacity style={[dynamicStyles.themeToggleCard, { backgroundColor: colors.card, borderColor: colors.border }]} onPress={handleToggleTheme}>
+            <View style={dynamicStyles.themeToggleLeft}>
+              <View style={[dynamicStyles.themeIconContainer, { backgroundColor: isDarkMode ? '#FFD700' : colors.primary }]}>
+                <IconSymbol
+                  ios_icon_name={isDarkMode ? 'moon.fill' : 'sun.max.fill'}
+                  android_material_icon_name={isDarkMode ? 'nightlight' : 'wb-sunny'}
+                  size={24}
+                  color={isDarkMode ? '#000000' : '#FFFFFF'}
+                />
+              </View>
+              <View>
+                <Text style={[dynamicStyles.themeToggleTitle, { color: colors.text }]}>
+                  {isDarkMode ? 'Dark Mode' : 'Light Mode'}
+                </Text>
+                <Text style={[dynamicStyles.themeToggleSubtitle, { color: colors.textSecondary }]}>
+                  {isDarkMode ? 'Black & Golden theme' : 'Fresh & Clean theme'}
+                </Text>
+              </View>
             </View>
-            <View>
-              <Text style={[dynamicStyles.themeToggleTitle, { color: colors.text }]}>
-                {isDarkMode ? 'Dark Mode' : 'Light Mode'}
-              </Text>
-              <Text style={[dynamicStyles.themeToggleSubtitle, { color: colors.textSecondary }]}>
-                {isDarkMode ? 'Black & Golden theme' : 'Fresh & Clean theme'}
-              </Text>
+            <View style={[dynamicStyles.toggleSwitch, { backgroundColor: isDarkMode ? '#FFD700' : colors.border }]}>
+              <View style={[dynamicStyles.toggleKnob, { transform: [{ translateX: isDarkMode ? 22 : 2 }], backgroundColor: isDarkMode ? '#000000' : '#FFFFFF' }]} />
             </View>
-          </View>
-          <View style={[dynamicStyles.toggleSwitch, { backgroundColor: isDarkMode ? '#FFD700' : colors.border }]}>
-            <View style={[dynamicStyles.toggleKnob, { transform: [{ translateX: isDarkMode ? 22 : 2 }], backgroundColor: isDarkMode ? '#000000' : '#FFFFFF' }]} />
-          </View>
-        </TouchableOpacity>
+          </TouchableOpacity>
+        )}
 
         {/* Guest Warning Card */}
         {user?.isGuest && (
@@ -237,8 +240,8 @@ export default function ProfileScreen() {
               {usage.is_pro
                 ? `${usage.scans_count} scans today (Pro: unlimited)`
                 : user?.isGuest
-                ? `${usage.scans_count} of 3 guest scans used today`
-                : `${usage.scans_count} of 10 free scans used today`}
+                  ? `${usage.scans_count} of 3 guest scans used today`
+                  : `${usage.scans_count} of 10 free scans used today`}
             </Text>
           </View>
         )}
@@ -348,7 +351,7 @@ export default function ProfileScreen() {
         {/* About Section */}
         <View style={dynamicStyles.section}>
           <Text style={dynamicStyles.sectionTitle}>About</Text>
-          
+
           <TouchableOpacity style={dynamicStyles.settingItem}>
             <View style={dynamicStyles.settingLeft}>
               <IconSymbol
