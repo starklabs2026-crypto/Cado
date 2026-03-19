@@ -9,6 +9,7 @@ import { registerGroupRoutes } from './routes/groups.js';
 import { registerInvitationRoutes } from './routes/invitations.js';
 import { registerNotificationRoutes } from './routes/notifications.js';
 import { registerAuthRoutes } from './routes/auth.js';
+import { registerRevenueCatRoutes } from './routes/revenuecat.js';
 
 const schema = { ...appSchema, ...authSchema };
 
@@ -631,6 +632,7 @@ setInterval(cleanupInactiveGuests, 60 * 60 * 1000);
 
 // Register routes
 registerAuthRoutes(app);
+registerRevenueCatRoutes(app);
 registerFoodEntryRoutes(app);
 registerUserProfileRoutes(app);
 registerUsageRoutes(app);

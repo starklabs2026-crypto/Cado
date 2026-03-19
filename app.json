@@ -1,6 +1,6 @@
 {
   "expo": {
-    "name": "CalO by FoodPharmer",
+    "name": "Cado - AI Calorie Tracker",
     "slug": "calo-by-foodpharmer",
     "version": "1.0.0",
     "orientation": "portrait",
@@ -14,7 +14,7 @@
     },
     "ios": {
       "supportsTablet": true,
-      "bundleIdentifier": "com.placeholder.app",
+      "bundleIdentifier": "com.starklabs.eatwise",
       "infoPlist": {
         "ITSAppUsesNonExemptEncryption": false,
         "NSAppTransportSecurity": {
@@ -91,8 +91,28 @@
         "backgroundColor": "#000000"
       },
       "edgeToEdgeEnabled": true,
-      "package": "com.placeholder.app",
+      "package": "com.starklabs.eatwise",
       "permissions": [
+        "INTERNET",
+        "ACCESS_NETWORK_STATE",
+        "CAMERA",
+        "READ_EXTERNAL_STORAGE",
+        "WRITE_EXTERNAL_STORAGE",
+        "INTERNET",
+        "ACCESS_NETWORK_STATE",
+        "CAMERA",
+        "READ_EXTERNAL_STORAGE",
+        "WRITE_EXTERNAL_STORAGE",
+        "INTERNET",
+        "ACCESS_NETWORK_STATE",
+        "CAMERA",
+        "READ_EXTERNAL_STORAGE",
+        "WRITE_EXTERNAL_STORAGE",
+        "INTERNET",
+        "ACCESS_NETWORK_STATE",
+        "CAMERA",
+        "READ_EXTERNAL_STORAGE",
+        "WRITE_EXTERNAL_STORAGE",
         "INTERNET",
         "ACCESS_NETWORK_STATE",
         "CAMERA",
@@ -127,20 +147,22 @@
     "runtimeVersion": {
       "policy": "sdkVersion"
     },
-    "scheme": "iwanttobuildaca",
+    "scheme": "cado",
     "experiments": {
       "typedRoutes": true
     },
     "extra": {
       "router": {},
       "backendUrl": "https://8sy935d3kbfkkm35z7tbk22nep8qpb9m.app.specular.dev",
+      "revenuecatIosKey": "appl_gsasbzmiDdIlWzgfipJskIaXnPw",
+      "revenuecatAndroidKey": "REVENUECAT_ANDROID_PUBLIC_KEY_PLACEHOLDER",
       "eas": {
-        "projectId": "6dc31092-d2ba-45ad-85d4-4e5a805191ad"
+        "projectId": "6c1595c7-6332-49f7-937f-c6901d85e6da"
       }
     },
-    "owner": "sunny2139",
+    "owner": "arnabch",
     "updates": {
-      "url": "https://u.expo.dev/6dc31092-d2ba-45ad-85d4-4e5a805191ad"
+      "url": "https://u.expo.dev/6c1595c7-6332-49f7-937f-c6901d85e6da"
     }
   }
 }

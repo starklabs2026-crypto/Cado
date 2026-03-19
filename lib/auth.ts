@@ -21,7 +21,7 @@ export const authClient = createAuthClient({
   baseURL: API_URL,
   plugins: [
     expoClient({
-      scheme: "calo",
+      scheme: "iwanttobuildaca",
       storagePrefix: "calo",
       storage,
     }),
@@ -31,25 +31,9 @@ export const authClient = createAuthClient({
     ...(Platform.OS === "web" && {
       credentials: "include",
     }),
-    // For iOS, add additional fetch options to help with SSL
-    ...(Platform.OS === "ios" && {
-      // Ensure we're using the correct headers
-      headers: {
-        "Accept": "application/json",
-        "Content-Type": "application/json",
-      },
-    }),
-    // Fallback to bearer token for all platforms
-    auth: {
-      type: "Bearer" as const,
-      token: async () => {
-        if (Platform.OS === "web") {
-          return localStorage.getItem(BEARER_TOKEN_KEY) || "";
-        } else {
-          return await SecureStore.getItemAsync(BEARER_TOKEN_KEY) || "";
-        }
-      },
-    },
+    // On native, expoClient plugin handles auth via cookies in SecureStore.
+    // Do NOT add Bearer token auth or custom headers here — they conflict
+    // with the plugin's cookie-based session management.
   },
 });
 

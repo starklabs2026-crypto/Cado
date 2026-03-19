@@ -29,6 +29,8 @@ yarn-error.*
 
 .natively/
 
+.claude/
+
 android/
 ios/
 

@@ -1,8 +1,11 @@
 import type { App } from '../index.js';
 import type { FastifyRequest, FastifyReply } from 'fastify';
 import { randomBytes } from 'crypto';
+import { eq } from 'drizzle-orm';
 import * as authSchema from '../db/schema/auth-schema.js';
 import * as appSchema from '../db/schema/schema.js';
+
+const GUEST_SESSION_LIMIT_DAYS = 7;
 
 interface GuestRegistrationResponse {
   userId: string;
@@ -13,6 +16,72 @@ interface GuestRegistrationResponse {
 }
 
 export function registerAuthRoutes(app: App) {
+  const requireAuth = app.requireAuth();
+
+  // GET /api/auth/guest-status - Check if a guest session is within the 7-day window
+  app.fastify.get(
+    '/api/auth/guest-status',
+    {
+      schema: {
+        description: 'Check if the authenticated guest session is still valid',
+        tags: ['auth'],
+        response: {
+          200: {
+            type: 'object',
+            properties: {
+              is_guest: { type: 'boolean' },
+              expired: { type: 'boolean' },
+              days_remaining: { type: 'integer' },
+            },
+          },
+          401: {
+            type: 'object',
+            properties: { error: { type: 'string' } },
+          },
+          404: {
+            type: 'object',
+            properties: { error: { type: 'string' } },
+          },
+        },
+      },
+    },
+    async (request: FastifyRequest, reply: FastifyReply) => {
+      const session = await requireAuth(request, reply);
+      if (!session) return;
+
+      const users = await app.db
+        .select()
+        .from(authSchema.user)
+        .where(eq(authSchema.user.id, session.user.id))
+        .limit(1);
+
+      if (users.length === 0) {
+        return reply.status(404).send({ error: 'User not found' });
+      }
+
+      const dbUser = users[0];
+
+      if (!dbUser.isGuest) {
+        // Regular users never expire
+        return { is_guest: false, expired: false, days_remaining: -1 };
+      }
+
+      const createdAt = new Date(dbUser.createdAt);
+      const now = new Date();
+      const diffMs = now.getTime() - createdAt.getTime();
+      const diffDays = Math.floor(diffMs / (1000 * 60 * 60 * 24));
+      const expired = diffDays >= GUEST_SESSION_LIMIT_DAYS;
+      const days_remaining = Math.max(0, GUEST_SESSION_LIMIT_DAYS - diffDays);
+
+      app.logger.info(
+        { userId: dbUser.id, diffDays, expired, days_remaining },
+        'Guest session status checked',
+      );
+
+      return { is_guest: true, expired, days_remaining };
+    },
+  );
+
   // POST /api/auth/guest - Register as a guest user
   app.fastify.post<{ Body: {} }>(
     '/api/auth/guest',

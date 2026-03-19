@@ -7,239 +7,246 @@ const FREE_TIER_DAILY_SCANS = 3;
 
 // Get today's date as YYYY-MM-DD string
 function getTodayDate(): string {
-  const now = new Date();
-  const year = now.getFullYear();
-  const month = String(now.getMonth() + 1).padStart(2, '0');
-  const day = String(now.getDate()).padStart(2, '0');
-  return `${year}-${month}-${day}`;
+	const now = new Date();
+	const year = now.getFullYear();
+	const month = String(now.getMonth() + 1).padStart(2, '0');
+	const day = String(now.getDate()).padStart(2, '0');
+	return `${year}-${month}-${day}`;
 }
 
 export function registerUsageRoutes(app: App) {
-  const requireAuth = app.requireAuth();
+	const requireAuth = app.requireAuth();
 
-  // GET /api/usage/today - Get today's usage
-  app.fastify.get('/api/usage/today', {
-    schema: {
-      description: 'Get today usage information',
-      tags: ['usage'],
-      response: {
-        200: {
-          type: 'object',
-          properties: {
-            date: { type: 'string' },
-            scans_count: { type: 'integer' },
-            scans_remaining: { type: 'integer' },
-            is_pro: { type: 'boolean' },
-            can_scan: { type: 'boolean' },
-          },
-        },
-        401: {
-          type: 'object',
-          properties: { error: { type: 'string' } },
-        },
-      },
-    },
-  }, async (request: FastifyRequest, reply: FastifyReply) => {
-    const session = await requireAuth(request, reply);
-    if (!session) return;
+	// GET /api/usage/today - Get today's usage
+	app.fastify.get(
+		'/api/usage/today',
+		{
+			schema: {
+				description: 'Get today usage information',
+				tags: ['usage'],
+				response: {
+					200: {
+						type: 'object',
+						properties: {
+							date: { type: 'string' },
+							scans_count: { type: 'integer' },
+							scans_remaining: { type: 'integer' },
+							is_pro: { type: 'boolean' },
+							can_scan: { type: 'boolean' },
+						},
+					},
+					401: {
+						type: 'object',
+						properties: { error: { type: 'string' } },
+					},
+				},
+			},
+		},
+		async (request: FastifyRequest, reply: FastifyReply) => {
+			const session = await requireAuth(request, reply);
+			if (!session) return;
 
-    app.logger.info({ userId: session.user.id }, 'Getting today usage');
+			app.logger.info({ userId: session.user.id }, 'Getting today usage');
 
-    const todayDate = getTodayDate();
+			const todayDate = getTodayDate();
 
-    // Get user profile
-    const profiles = await app.db
-      .select()
-      .from(schema.userProfiles)
-      .where(eq(schema.userProfiles.userId, session.user.id))
-      .limit(1);
+			// Get user profile
+			const profiles = await app.db
+				.select()
+				.from(schema.userProfiles)
+				.where(eq(schema.userProfiles.userId, session.user.id))
+				.limit(1);
 
-    const isPro = profiles.length > 0 ? profiles[0].isPro : false;
+			const isPro = profiles.length > 0 ? profiles[0].isPro : false;
 
-    // Get today's usage
-    const usage = await app.db
-      .select()
-      .from(schema.dailyUsage)
-      .where(
-        and(
-          eq(schema.dailyUsage.userId, session.user.id),
-          eq(schema.dailyUsage.date, todayDate)
-        )
-      )
-      .limit(1);
+			// Get today's usage
+			const usage = await app.db
+				.select()
+				.from(schema.dailyUsage)
+				.where(
+					and(
+						eq(schema.dailyUsage.userId, session.user.id),
+						eq(schema.dailyUsage.date, todayDate),
+					),
+				)
+				.limit(1);
 
-    const scansCount = usage.length > 0 ? usage[0].scansCount : 0;
-    const scansRemaining = isPro ? -1 : Math.max(0, FREE_TIER_DAILY_SCANS - scansCount);
-    const canScan = isPro || scansCount < FREE_TIER_DAILY_SCANS;
+			const scansCount = usage.length > 0 ? usage[0].scansCount : 0;
+			const scansRemaining = -1; // Unlimited
+			const canScan = true;
 
-    app.logger.info({ userId: session.user.id, scansCount, canScan }, 'Today usage retrieved');
+			app.logger.info(
+				{ userId: session.user.id, scansCount, canScan },
+				'Today usage retrieved',
+			);
 
-    return {
-      date: todayDate,
-      scans_count: scansCount,
-      scans_remaining: scansRemaining,
-      is_pro: isPro,
-      can_scan: canScan,
-    };
-  });
+			return {
+				date: todayDate,
+				scans_count: scansCount,
+				scans_remaining: scansRemaining,
+				is_pro: isPro,
+				can_scan: canScan,
+			};
+		},
+	);
 
-  // POST /api/usage/increment - Increment scan count
-  app.fastify.post('/api/usage/increment', {
-    schema: {
-      description: 'Increment daily scan count',
-      tags: ['usage'],
-      response: {
-        200: {
-          type: 'object',
-          properties: {
-            scans_count: { type: 'integer' },
-            scans_remaining: { type: 'integer' },
-            can_scan: { type: 'boolean' },
-          },
-        },
-        401: {
-          type: 'object',
-          properties: { error: { type: 'string' } },
-        },
-        429: {
-          type: 'object',
-          properties: { error: { type: 'string' } },
-        },
-      },
-    },
-  }, async (request: FastifyRequest, reply: FastifyReply) => {
-    const session = await requireAuth(request, reply);
-    if (!session) return;
+	// POST /api/usage/increment - Increment scan count
+	app.fastify.post(
+		'/api/usage/increment',
+		{
+			schema: {
+				description: 'Increment daily scan count',
+				tags: ['usage'],
+				response: {
+					200: {
+						type: 'object',
+						properties: {
+							scans_count: { type: 'integer' },
+							scans_remaining: { type: 'integer' },
+							can_scan: { type: 'boolean' },
+						},
+					},
+					401: {
+						type: 'object',
+						properties: { error: { type: 'string' } },
+					},
+					429: {
+						type: 'object',
+						properties: { error: { type: 'string' } },
+					},
+				},
+			},
+		},
+		async (request: FastifyRequest, reply: FastifyReply) => {
+			const session = await requireAuth(request, reply);
+			if (!session) return;
 
-    app.logger.info({ userId: session.user.id }, 'Incrementing scan count');
+			app.logger.info(
+				{ userId: session.user.id },
+				'Incrementing scan count',
+			);
 
-    const todayDate = getTodayDate();
+			const todayDate = getTodayDate();
 
-    // Get user profile
-    const profiles = await app.db
-      .select()
-      .from(schema.userProfiles)
-      .where(eq(schema.userProfiles.userId, session.user.id))
-      .limit(1);
+			// Get user profile
+			const profiles = await app.db
+				.select()
+				.from(schema.userProfiles)
+				.where(eq(schema.userProfiles.userId, session.user.id))
+				.limit(1);
 
-    const isPro = profiles.length > 0 ? profiles[0].isPro : false;
+			const isPro = profiles.length > 0 ? profiles[0].isPro : false;
 
-    // Get today's usage
-    let usage = await app.db
-      .select()
-      .from(schema.dailyUsage)
-      .where(
-        and(
-          eq(schema.dailyUsage.userId, session.user.id),
-          eq(schema.dailyUsage.date, todayDate)
-        )
-      )
-      .limit(1);
+			// Get today's usage
+			let usage = await app.db
+				.select()
+				.from(schema.dailyUsage)
+				.where(
+					and(
+						eq(schema.dailyUsage.userId, session.user.id),
+						eq(schema.dailyUsage.date, todayDate),
+					),
+				)
+				.limit(1);
 
-    let scansCount = 0;
+			let scansCount = 0;
 
-    if (usage.length === 0) {
-      // Create new usage record
-      const created = await app.db
-        .insert(schema.dailyUsage)
-        .values({
-          userId: session.user.id,
-          date: todayDate,
-          scansCount: 1,
-        })
-        .returning();
-      scansCount = created[0].scansCount;
-    } else {
-      // Check if free user exceeded limit
-      if (!isPro && usage[0].scansCount >= FREE_TIER_DAILY_SCANS) {
-        app.logger.warn({ userId: session.user.id }, 'Daily scan limit exceeded');
-        return reply.status(429).send({ error: 'Daily scan limit exceeded' });
-      }
+			if (usage.length === 0) {
+				// Create new usage record
+				const created = await app.db
+					.insert(schema.dailyUsage)
+					.values({
+						userId: session.user.id,
+						date: todayDate,
+						scansCount: 1,
+					})
+					.returning();
+				scansCount = created[0].scansCount;
+			} else {
+				// Limit check removed
+				// Increment count
+				const updated = await app.db
+					.update(schema.dailyUsage)
+					.set({ scansCount: usage[0].scansCount + 1 })
+					.where(
+						and(
+							eq(schema.dailyUsage.userId, session.user.id),
+							eq(schema.dailyUsage.date, todayDate),
+						),
+					)
+					.returning();
+				scansCount = updated[0].scansCount;
+			}
 
-      // Increment count
-      const updated = await app.db
-        .update(schema.dailyUsage)
-        .set({ scansCount: usage[0].scansCount + 1 })
-        .where(
-          and(
-            eq(schema.dailyUsage.userId, session.user.id),
-            eq(schema.dailyUsage.date, todayDate)
-          )
-        )
-        .returning();
-      scansCount = updated[0].scansCount;
-    }
+			const scansRemaining = -1; // Unlimited
+			const canScan = true;
 
-    const scansRemaining = isPro ? -1 : Math.max(0, FREE_TIER_DAILY_SCANS - scansCount);
-    const canScan = isPro || scansCount < FREE_TIER_DAILY_SCANS;
+			app.logger.info(
+				{ userId: session.user.id, scansCount, canScan },
+				'Scan count incremented',
+			);
 
-    app.logger.info({ userId: session.user.id, scansCount, canScan }, 'Scan count incremented');
+			return {
+				scans_count: scansCount,
+				scans_remaining: scansRemaining,
+				can_scan: canScan,
+			};
+		},
+	);
 
-    return {
-      scans_count: scansCount,
-      scans_remaining: scansRemaining,
-      can_scan: canScan,
-    };
-  });
+	// GET /api/usage/check-limit - Check if user can scan
+	app.fastify.get(
+		'/api/usage/check-limit',
+		{
+			schema: {
+				description: 'Check if user can scan',
+				tags: ['usage'],
+				response: {
+					200: {
+						type: 'object',
+						properties: {
+							can_scan: { type: 'boolean' },
+							reason: { type: ['string', 'null'] },
+						},
+					},
+					401: {
+						type: 'object',
+						properties: { error: { type: 'string' } },
+					},
+				},
+			},
+		},
+		async (request: FastifyRequest, reply: FastifyReply) => {
+			const session = await requireAuth(request, reply);
+			if (!session) return;
 
-  // GET /api/usage/check-limit - Check if user can scan
-  app.fastify.get('/api/usage/check-limit', {
-    schema: {
-      description: 'Check if user can scan',
-      tags: ['usage'],
-      response: {
-        200: {
-          type: 'object',
-          properties: {
-            can_scan: { type: 'boolean' },
-            reason: { type: ['string', 'null'] },
-          },
-        },
-        401: {
-          type: 'object',
-          properties: { error: { type: 'string' } },
-        },
-      },
-    },
-  }, async (request: FastifyRequest, reply: FastifyReply) => {
-    const session = await requireAuth(request, reply);
-    if (!session) return;
+			app.logger.info({ userId: session.user.id }, 'Checking scan limit');
 
-    app.logger.info({ userId: session.user.id }, 'Checking scan limit');
+			const todayDate = getTodayDate();
 
-    const todayDate = getTodayDate();
+			// Get user profile
+			const profiles = await app.db
+				.select()
+				.from(schema.userProfiles)
+				.where(eq(schema.userProfiles.userId, session.user.id))
+				.limit(1);
 
-    // Get user profile
-    const profiles = await app.db
-      .select()
-      .from(schema.userProfiles)
-      .where(eq(schema.userProfiles.userId, session.user.id))
-      .limit(1);
+			const isPro = profiles.length > 0 ? profiles[0].isPro : false;
 
-    const isPro = profiles.length > 0 ? profiles[0].isPro : false;
+			if (isPro) {
+				return { can_scan: true, reason: null };
+			}
 
-    if (isPro) {
-      return { can_scan: true, reason: null };
-    }
+			// Limit check removed for free users
+			const canScan = true;
+			const reason = null;
 
-    // Check daily limit for free users
-    const usage = await app.db
-      .select()
-      .from(schema.dailyUsage)
-      .where(
-        and(
-          eq(schema.dailyUsage.userId, session.user.id),
-          eq(schema.dailyUsage.date, todayDate)
-        )
-      )
-      .limit(1);
+			app.logger.info(
+				{ userId: session.user.id, canScan },
+				'Scan limit checked',
+			);
 
-    const scansCount = usage.length > 0 ? usage[0].scansCount : 0;
-    const canScan = scansCount < FREE_TIER_DAILY_SCANS;
-    const reason = canScan ? null : `Daily limit of ${FREE_TIER_DAILY_SCANS} scans reached`;
-
-    app.logger.info({ userId: session.user.id, canScan }, 'Scan limit checked');
-
-    return { can_scan: canScan, reason };
-  });
+			return { can_scan: canScan, reason };
+		},
+	);
 }
