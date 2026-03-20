@@ -23,27 +23,7 @@
           "NSAllowsLocalNetworking": true,
           "NSAllowsArbitraryLoadsForMedia": true,
           "NSExceptionDomains": {
-            "specular.dev": {
-              "NSExceptionAllowsInsecureHTTPLoads": true,
-              "NSIncludesSubdomains": true,
-              "NSExceptionRequiresForwardSecrecy": false,
-              "NSExceptionMinimumTLSVersion": "TLSv1.0",
-              "NSThirdPartyExceptionAllowsInsecureHTTPLoads": true,
-              "NSThirdPartyExceptionRequiresForwardSecrecy": false,
-              "NSThirdPartyExceptionMinimumTLSVersion": "TLSv1.0",
-              "NSRequiresCertificateTransparency": false
-            },
-            "app.specular.dev": {
-              "NSExceptionAllowsInsecureHTTPLoads": true,
-              "NSIncludesSubdomains": true,
-              "NSExceptionRequiresForwardSecrecy": false,
-              "NSExceptionMinimumTLSVersion": "TLSv1.0",
-              "NSThirdPartyExceptionAllowsInsecureHTTPLoads": true,
-              "NSThirdPartyExceptionRequiresForwardSecrecy": false,
-              "NSThirdPartyExceptionMinimumTLSVersion": "TLSv1.0",
-              "NSRequiresCertificateTransparency": false
-            },
-            "8sy935d3kbfkkm35z7tbk22nep8qpb9m.app.specular.dev": {
+            "railway.app": {
               "NSExceptionAllowsInsecureHTTPLoads": true,
               "NSIncludesSubdomains": true,
               "NSExceptionRequiresForwardSecrecy": false,
@@ -153,7 +133,7 @@
     },
     "extra": {
       "router": {},
-      "backendUrl": "https://8sy935d3kbfkkm35z7tbk22nep8qpb9m.app.specular.dev",
+      "backendUrl": "https://cado-production.up.railway.app",
       "revenuecatIosKey": "appl_gsasbzmiDdIlWzgfipJskIaXnPw",
       "revenuecatAndroidKey": "REVENUECAT_ANDROID_PUBLIC_KEY_PLACEHOLDER",
       "eas": {
