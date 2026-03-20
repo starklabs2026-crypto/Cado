@@ -4,6 +4,7 @@ import { db } from './db.js';
 import * as authSchema from '../db/schema/auth-schema.js';
 
 export const auth = betterAuth({
+  trustedOrigins: ['cado://', 'https://cado-production.up.railway.app'],
   database: drizzleAdapter(db, {
     provider: 'pg',
     schema: {
@@ -14,7 +15,7 @@ export const auth = betterAuth({
     },
   }),
   secret: process.env.BETTER_AUTH_SECRET!,
-  baseURL: process.env.BETTER_AUTH_URL!,
+  baseURL: process.env.BETTER_AUTH_URL || `https://${process.env.RAILWAY_PUBLIC_DOMAIN}` || 'https://cado-production.up.railway.app',
   socialProviders: {
     google: {
       clientId: process.env.GOOGLE_CLIENT_ID!,
