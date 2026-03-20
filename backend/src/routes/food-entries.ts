@@ -2,7 +2,8 @@ import type { App } from '../index.js';
 import type { FastifyInstance, FastifyRequest, FastifyReply } from 'fastify';
 import { eq, and, gte, lt, ilike, or } from 'drizzle-orm';
 import * as schema from '../db/schema/schema.js';
-import { gateway } from '@specific-dev/framework';
+import { openai } from '@ai-sdk/openai';
+import { uploadImage } from '../lib/storage.js';
 import { generateObject } from 'ai';
 import { z } from 'zod';
 
@@ -269,7 +270,7 @@ export function registerFoodEntryRoutes(app: App) {
 
       try {
         const result = await generateObject({
-          model: gateway('openai/gpt-4o'),
+          model: openai('gpt-4o'),
           schema: nutritionSchema,
           schemaName: 'FoodNutrition',
           schemaDescription: 'Extract nutritional information for a specific food',
@@ -527,26 +528,15 @@ Important:
         return reply.status(400).send({ error: 'Image file cannot be empty' });
       }
 
-      // Upload image to storage
-      const storageKey = `food-images/${Date.now()}-${data.filename}`;
-      let uploadedKey: string;
+      // Upload image to Cloudinary
+      const storageKey = `${Date.now()}-${data.filename ?? 'food.jpg'}`;
+      let imageUrl: string;
       try {
-        uploadedKey = await app.storage.upload(storageKey, buffer);
-        app.logger.info({ userId: session.user.id, key: uploadedKey }, 'Image uploaded to storage');
+        imageUrl = await uploadImage(buffer, storageKey);
+        app.logger.info({ userId: session.user.id, imageUrl }, 'Image uploaded to Cloudinary');
       } catch (err) {
         app.logger.error({ userId: session.user.id, err }, 'Failed to upload image');
         return reply.status(500).send({ error: 'Failed to upload image' });
-      }
-
-      // Get signed URL for the image
-      let imageUrl: string;
-      try {
-        const signedUrlResult = await app.storage.getSignedUrl(uploadedKey);
-        imageUrl = signedUrlResult.url;
-        app.logger.info({ userId: session.user.id, imageUrl }, 'Generated signed URL for image');
-      } catch (err) {
-        app.logger.error({ userId: session.user.id, err }, 'Failed to generate signed URL');
-        return reply.status(500).send({ error: 'Failed to generate image URL' });
       }
 
       // Convert image to base64 for AI analysis
@@ -559,7 +549,7 @@ Important:
 
         // Wrap in Promise.race with timeout to prevent hanging
         const analysisPromise = generateObject({
-          model: gateway('openai/gpt-4o'),
+          model: openai('gpt-4o'),
           schema: nutritionSchema,
           schemaName: 'FoodNutrition',
           schemaDescription: 'Extract nutritional information from a food image',

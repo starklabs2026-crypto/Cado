@@ -1,16 +1,13 @@
 import { drizzle } from 'drizzle-orm/postgres-js';
-import { migrate } from 'drizzle-orm/postgres-js/migrator';
 import postgres from 'postgres';
-
-try { process.loadEnvFile('.env'); } catch {}
+import * as appSchema from '../db/schema/schema.js';
+import * as authSchema from '../db/schema/auth-schema.js';
 
 const isInternalUrl = process.env.DATABASE_URL?.includes('.railway.internal');
 const client = postgres(process.env.DATABASE_URL!, {
   ssl: isInternalUrl ? false : { rejectUnauthorized: false },
-  max: 1,
 });
-const db = drizzle(client);
 
-await migrate(db, { migrationsFolder: './drizzle' });
-await client.end();
-console.log('Migrations complete');
+export const db = drizzle(client, {
+  schema: { ...appSchema, ...authSchema },
+});

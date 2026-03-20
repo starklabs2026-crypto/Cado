@@ -1,4 +1,10 @@
-import { createApplication } from "@specific-dev/framework";
+import Fastify from 'fastify';
+import cors from '@fastify/cors';
+import multipart from '@fastify/multipart';
+import formbody from '@fastify/formbody';
+import type { FastifyRequest, FastifyReply } from 'fastify';
+import { db } from './lib/db.js';
+import { auth } from './lib/auth.js';
 import { eq, lt } from 'drizzle-orm';
 import * as appSchema from './db/schema/schema.js';
 import * as authSchema from './db/schema/auth-schema.js';
@@ -11,18 +17,44 @@ import { registerNotificationRoutes } from './routes/notifications.js';
 import { registerAuthRoutes } from './routes/auth.js';
 import { registerRevenueCatRoutes } from './routes/revenuecat.js';
 
-const schema = { ...appSchema, ...authSchema };
+const fastify = Fastify({ logger: true });
 
-// Create application with schema for full database type support
-export const app = await createApplication(schema);
+await fastify.register(cors, { origin: true });
+await fastify.register(multipart);
+await fastify.register(formbody);
 
-// Export App type for use in route files
+// Better Auth handles all /api/auth/* routes
+fastify.all('/api/auth/*', async (request: FastifyRequest, reply: FastifyReply) => {
+  const response = await auth.handler(request.raw as any);
+  reply.status(response.status);
+  response.headers.forEach((value: string, key: string) => reply.header(key, value));
+  const text = await response.text();
+  return reply.send(text || null);
+});
+
+function makeRequireAuth() {
+  return async (request: FastifyRequest, reply: FastifyReply) => {
+    const session = await auth.api.getSession({ headers: request.headers as any });
+    if (!session) {
+      reply.status(401).send({ error: 'Unauthorized' });
+      return null;
+    }
+    return session;
+  };
+}
+
+export const app = {
+  fastify,
+  db,
+  logger: fastify.log,
+  requireAuth: () => makeRequireAuth(),
+};
+
 export type App = typeof app;
-
 // Auto-seed food database on startup if empty
 async function seedFoodDatabase() {
   try {
-    const existing = await app.db
+    const existing = await db
       .select()
       .from(appSchema.foodDatabase)
       .limit(1);
@@ -30,13 +62,13 @@ async function seedFoodDatabase() {
     // Check if existing data has zero calories (indicating a bad seed)
     let shouldReseed = existing.length === 0;
     if (existing.length > 0 && existing[0].calories === 0) {
-      app.logger.warn('Found food database with zero calories, clearing for reseed');
-      await app.db.delete(appSchema.foodDatabase);
+      fastify.log.warn('Found food database with zero calories, clearing for reseed');
+      await db.delete(appSchema.foodDatabase);
       shouldReseed = true;
     }
 
     if (!shouldReseed) {
-      app.logger.info('Food database already populated with valid data, skipping seed');
+      fastify.log.info('Food database already populated with valid data, skipping seed');
       return;
     }
 
@@ -520,11 +552,11 @@ async function seedFoodDatabase() {
 
     const foodData = generateFoodDatabase();
 
-    app.logger.info({ itemCount: foodData.length }, 'Starting food database seed with comprehensive database');
+    fastify.log.info({ itemCount: foodData.length }, 'Starting food database seed with comprehensive database');
 
     // Log sample of food data before insertion
     if (foodData.length > 0) {
-      app.logger.info(
+      fastify.log.info(
         {
           samples: foodData.slice(0, 5).map(f => ({
             name: f.name,
@@ -547,7 +579,7 @@ async function seedFoodDatabase() {
     for (let i = 0; i < foodData.length; i += batchSize) {
       const batch = foodData.slice(i, i + batchSize);
       try {
-        await app.db
+        await db
           .insert(appSchema.foodDatabase)
           .values(batch.map(food => ({
             name: food.name,
@@ -562,20 +594,20 @@ async function seedFoodDatabase() {
             description: null,
           })));
         insertedCount += batch.length;
-        app.logger.debug({ inserted: insertedCount, total: foodData.length }, 'Batch insert progress');
+        fastify.log.debug({ inserted: insertedCount, total: foodData.length }, 'Batch insert progress');
       } catch (batchErr) {
-        app.logger.error({ err: batchErr, batchStart: i, batchEnd: i + batchSize }, 'Failed to insert batch');
+        fastify.log.error({ err: batchErr, batchStart: i, batchEnd: i + batchSize }, 'Failed to insert batch');
       }
     }
 
     // Verify insertion
-    const verifyCount = await app.db
+    const verifyCount = await db
       .select()
       .from(appSchema.foodDatabase)
       .limit(1);
 
     if (verifyCount.length > 0) {
-      app.logger.info(
+      fastify.log.info(
         {
           itemCount: insertedCount,
           verifyItem: {
@@ -589,18 +621,14 @@ async function seedFoodDatabase() {
         'Food database seeded successfully with verification'
       );
     } else {
-      app.logger.error({}, 'Food database seeding failed - no items found after insertion');
+      fastify.log.error({}, 'Food database seeding failed - no items found after insertion');
     }
   } catch (error) {
-    app.logger.error({ err: error }, 'Failed to auto-seed food database');
+    fastify.log.error({ err: error }, 'Failed to auto-seed food database');
   }
 }
 
-// Enable authentication with Better Auth
-app.withAuth();
-
-// Enable storage for file uploads
-app.withStorage();
+// Enable storage for file uploads — now handled by Cloudinary in lib/storage.ts
 
 // Auto-seed food database
 await seedFoodDatabase();
@@ -611,19 +639,19 @@ async function cleanupInactiveGuests() {
     const sevenDaysAgo = new Date();
     sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 7);
 
-    const inactiveGuests = await app.db
+    const inactiveGuests = await db
       .select()
       .from(appSchema.guestUsers)
       .where(lt(appSchema.guestUsers.lastActivityAt, sevenDaysAgo));
 
     if (inactiveGuests.length > 0) {
       for (const guest of inactiveGuests) {
-        await app.db.delete(appSchema.guestUsers).where(eq(appSchema.guestUsers.id, guest.id));
+        await db.delete(appSchema.guestUsers).where(eq(appSchema.guestUsers.id, guest.id));
       }
-      app.logger.info({ deletedCount: inactiveGuests.length }, 'Cleaned up inactive guest users');
+      fastify.log.info({ deletedCount: inactiveGuests.length }, 'Cleaned up inactive guest users');
     }
   } catch (error) {
-    app.logger.warn({ err: error }, 'Failed to cleanup inactive guests');
+    fastify.log.warn({ err: error }, 'Failed to cleanup inactive guests');
   }
 }
 
@@ -640,5 +668,4 @@ registerGroupRoutes(app);
 registerInvitationRoutes(app);
 registerNotificationRoutes(app);
 
-await app.run();
-app.logger.info('Application running');
+await fastify.listen({ port: parseInt(process.env.PORT ?? '3000'), host: '0.0.0.0' });
