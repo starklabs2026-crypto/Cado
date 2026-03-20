@@ -25,7 +25,22 @@ await fastify.register(formbody);
 
 // Better Auth handles all /api/auth/* routes
 fastify.all('/api/auth/*', async (request: FastifyRequest, reply: FastifyReply) => {
-  const response = await auth.handler(request.raw as any);
+  const baseURL = process.env.BETTER_AUTH_URL || 'https://cado-production.up.railway.app';
+  const url = new URL(request.url, baseURL).toString();
+
+  const headers: Record<string, string> = {};
+  for (const [key, value] of Object.entries(request.headers)) {
+    if (value !== undefined) {
+      headers[key] = Array.isArray(value) ? value.join(', ') : value;
+    }
+  }
+
+  let body: string | undefined;
+  if (request.method !== 'GET' && request.method !== 'HEAD' && request.body !== undefined) {
+    body = typeof request.body === 'string' ? request.body : JSON.stringify(request.body);
+  }
+
+  const response = await auth.handler(new Request(url, { method: request.method, headers, body }));
   reply.status(response.status);
   response.headers.forEach((value: string, key: string) => reply.header(key, value));
   const text = await response.text();
